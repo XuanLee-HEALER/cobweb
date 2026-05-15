@@ -28,11 +28,15 @@
   });
 </script>
 
+<!--
+  Click-outside dismissal: the window-level mousedown listener in $effect
+  above checks ref.contains(e.target), so clicks on this container do not
+  need stopPropagation.
+-->
 <div
   bind:this={ref}
   class="ctx-menu"
   style="left: {pos.px}px; top: {pos.py}px"
-  onclick={(e) => e.stopPropagation()}
   role="menu"
   tabindex="-1">
   {#each menu.items as it, i (i)}

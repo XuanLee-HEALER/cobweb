@@ -53,34 +53,34 @@
   {#if cap.id === 'ca'}
     <div class="field-row">
       <div class="field">
-        <label>source</label>
-        <select>
+        <label for="ca-source">source</label>
+        <select id="ca-source">
           <option value="kube">kubectl get configmap kube-root-ca.crt</option>
           <option value="file">file: /etc/ssl/ca.pem</option>
           <option value="stdin">stdin (paste PEM)</option>
         </select>
       </div>
       <div class="field" style="max-width: 200px">
-        <label>context</label>
-        <select><option>prod</option><option>stage</option></select>
+        <label for="ca-context">context</label>
+        <select id="ca-context"><option>prod</option><option>stage</option></select>
       </div>
     </div>
     <div class="field">
-      <label>cert label</label>
-      <input type="text" value="kube-int-ca-2026q2" />
+      <label for="ca-cert-label">cert label</label>
+      <input id="ca-cert-label" type="text" value="kube-int-ca-2026q2" />
       <div class="hint">becomes the filename under /usr/local/share/ca-certificates/&lt;label&gt;.crt</div>
     </div>
     <div class="field-row">
       <div class="field">
-        <label>after install</label>
-        <select>
+        <label for="ca-after-install">after install</label>
+        <select id="ca-after-install">
           <option value="update">run update-ca-certificates</option>
           <option value="skip">skip · operator-managed</option>
         </select>
       </div>
       <div class="field">
-        <label>verify by</label>
-        <select>
+        <label for="ca-verify-by">verify by</label>
+        <select id="ca-verify-by">
           <option value="openssl">openssl verify against test endpoint</option>
           <option value="curl">curl https://&lt;test&gt; --cacert /dev/null</option>
         </select>
@@ -89,17 +89,17 @@
   {:else if cap.id === 'dns'}
     <div class="field-row">
       <div class="field" style="flex: 2">
-        <label>zone</label>
-        <input type="text" value="mesh.cobweb.lan" />
+        <label for="dns-zone">zone</label>
+        <input id="dns-zone" type="text" value="mesh.cobweb.lan" />
       </div>
       <div class="field" style="flex: 1">
-        <label>nameserver</label>
-        <input type="text" value="10.144.0.1" />
+        <label for="dns-nameserver">nameserver</label>
+        <input id="dns-nameserver" type="text" value="10.144.0.1" />
       </div>
     </div>
     <div class="field">
-      <label>strategy</label>
-      <select>
+      <label for="dns-strategy">strategy</label>
+      <select id="dns-strategy">
         <option value="resolved">systemd-resolved drop-in</option>
         <option value="resolver">/etc/resolver/&lt;zone&gt; (mac)</option>
         <option value="nrpt">NRPT (win)</option>
@@ -107,21 +107,21 @@
       </select>
     </div>
     <div class="field">
-      <label>persist as</label>
-      <input type="text" value="cobweb-mesh-internal" />
+      <label for="dns-persist-as">persist as</label>
+      <input id="dns-persist-as" type="text" value="cobweb-mesh-internal" />
     </div>
   {:else if cap.id === 'ssh'}
     <div class="field-row">
       <div class="field" style="flex: 2">
-        <label>key source</label>
-        <select>
+        <label for="ssh-key-source">key source</label>
+        <select id="ssh-key-source">
           <option value="archmbp">root@archmbp · ed25519 (last rotated 2026-04-12)</option>
           <option value="new">generate new ed25519</option>
         </select>
       </div>
       <div class="field" style="flex: 1">
-        <label>op</label>
-        <select>
+        <label for="ssh-op">op</label>
+        <select id="ssh-op">
           <option value="rotate">rotate</option>
           <option value="add">add to authorized_keys</option>
           <option value="revoke">revoke</option>
@@ -129,12 +129,12 @@
       </div>
     </div>
     <div class="field">
-      <label>authorized_keys path</label>
-      <input type="text" value="/root/.ssh/authorized_keys" />
+      <label for="ssh-authz-path">authorized_keys path</label>
+      <input id="ssh-authz-path" type="text" value="/root/.ssh/authorized_keys" />
     </div>
     <div class="field">
-      <label>fence (ssh config)</label>
-      <textarea rows="3">{`# cobweb mesh
+      <label for="ssh-fence">fence (ssh config)</label>
+      <textarea id="ssh-fence" rows="3">{`# cobweb mesh
 Match host *.mesh.cobweb.lan
   IdentityFile ~/.ssh/cobweb_ed25519
   IdentitiesOnly yes`}</textarea>
@@ -205,8 +205,9 @@ Match host *.mesh.cobweb.lan
   </div>
   {#if presetDraft}
     <div class="preset-form">
-      <label>preset name</label>
+      <label for="preset-name">preset name</label>
       <input
+        id="preset-name"
         type="text"
         value={presetDraft.name}
         oninput={(e) => setPresetDraft({ name: e.currentTarget.value })}

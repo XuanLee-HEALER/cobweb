@@ -146,33 +146,33 @@
       {@const crossHl = rowHl && colHl}
       {@const valText = isDiag ? '' : (unreach ? '×' : metricFmt(v))}
       {@const trend = isDiag || unreach ? null : trendFor(rowNode, colNode)}
-      <div
-        class="mx-cell"
-        class:diag={isDiag}
-        class:unreach
-        class:q0={q === 'q0'}
-        class:q1={q === 'q1'}
-        class:q2={q === 'q2'}
-        class:q3={q === 'q3'}
-        class:q4={q === 'q4'}
-        class:q5={q === 'q5'}
-        class:row-hl={rowHl && !crossHl}
-        class:col-hl={colHl && !crossHl}
-        class:cross-hl={crossHl}
-        style="grid-column: {j + 2}; grid-row: {i + 2}"
-        role={isDiag ? undefined : 'button'}
-        tabindex={isDiag ? undefined : 0}
-        onmouseenter={(e) => onCellEnter(e, rowNode, colNode, isDiag)}
-        onmouseleave={onCellLeave}
-        onclick={(e) => onCellClick(e, rowNode, colNode, isDiag)}
-        oncontextmenu={(e) => openCellMenu(e, rowNode, colNode)}
-      >
-        {#if !isDiag}
+      {#if isDiag}
+        <div class="mx-cell diag" style="grid-column: {j + 2}; grid-row: {i + 2}"></div>
+      {:else}
+        <button
+          type="button"
+          class="mx-cell"
+          class:unreach
+          class:q0={q === 'q0'}
+          class:q1={q === 'q1'}
+          class:q2={q === 'q2'}
+          class:q3={q === 'q3'}
+          class:q4={q === 'q4'}
+          class:q5={q === 'q5'}
+          class:row-hl={rowHl && !crossHl}
+          class:col-hl={colHl && !crossHl}
+          class:cross-hl={crossHl}
+          style="grid-column: {j + 2}; grid-row: {i + 2}"
+          onmouseenter={(e) => onCellEnter(e, rowNode, colNode, false)}
+          onmouseleave={onCellLeave}
+          onclick={(e) => onCellClick(e, rowNode, colNode, false)}
+          oncontextmenu={(e) => openCellMenu(e, rowNode, colNode)}
+        >
           <span class="v">{valText}</span>
           {#if !unreach}<span class="u">{unit()}</span>{/if}
           {#if trend}<span class="trend {trend}">{trend === 'up' ? '↑' : '↓'}</span>{/if}
-        {/if}
-      </div>
+        </button>
+      {/if}
     {/each}
   {/each}
 </div>

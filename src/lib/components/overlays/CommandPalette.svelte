@@ -87,12 +87,14 @@
       oninput={(e) => { q = e.currentTarget.value; active = 0; }}
       onkeydown={onKeyDown}
     />
-    <ul>
+    <div class="cmdk-list" role="listbox" tabindex="-1" aria-label="commands">
       {#if items.length === 0}
-        <li style="color: var(--fg-disabled)">no match.</li>
+        <div class="cmdk-empty">no match.</div>
       {/if}
       {#each items as item, i (i)}
-        <li
+        <button
+          type="button"
+          class="cmdk-item"
           class:active={i === active}
           onmouseenter={() => active = i}
           onclick={() => exec(item)}
@@ -108,8 +110,8 @@
               {#each item.keys as k (k)}<kbd>{k}</kbd>{/each}
             </span>
           {/if}
-        </li>
+        </button>
       {/each}
-    </ul>
+    </div>
   </div>
 </div>
