@@ -1,7 +1,7 @@
 <script lang="ts">
-  import type { Node } from './data';
-  import { genSeries } from './data';
-  import Sparkline from './Sparkline.svelte';
+  import type { Node } from '$lib/data/mock-nodes';
+  import { genSeries } from '$lib/data/mock-nodes';
+  import Sparkline from '$lib/components/ui/Sparkline.svelte';
 
   interface Props { node: Node; }
   let { node }: Props = $props();

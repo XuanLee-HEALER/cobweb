@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { Metric } from './ui-state.svelte';
+  import type { Metric } from '$lib/state/ui.svelte';
   interface Props { metric: Metric; }
   let { metric }: Props = $props();
 

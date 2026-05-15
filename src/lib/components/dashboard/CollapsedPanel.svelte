@@ -1,6 +1,6 @@
 <script lang="ts">
-  import type { Node } from './data';
-  import DualStat from './DualStat.svelte';
+  import type { Node } from '$lib/data/mock-nodes';
+  import DualStat from '$lib/components/ui/DualStat.svelte';
 
   interface Props {
     node: Node;

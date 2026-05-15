@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { TASK_HISTORY, type HistoryItem } from './data';
+  import { TASK_HISTORY, type HistoryItem } from '$lib/data/mock-nodes';
 
   interface Props {
     onOpen: (t: HistoryItem) => void;

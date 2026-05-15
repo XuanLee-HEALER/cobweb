@@ -1,6 +1,6 @@
-import type { Node } from "./data";
-import type { CtxMenuItem } from "./ui-state.svelte";
-import { openDrill, openSSH, selectNode } from "./ui-state.svelte";
+import type { Node } from "$lib/data/mock-nodes";
+import type { CtxMenuItem } from "$lib/state/ui.svelte";
+import { openDrill, openSSH, selectNode } from "$lib/state/ui.svelte";
 
 export function cellMenuItems(rowNode: Node, colNode: Node): CtxMenuItem[] {
   const isDiag = rowNode.id === colNode.id;

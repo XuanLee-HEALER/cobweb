@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { NODES } from './data';
-  import { ui, openSSH, selectNode } from './ui-state.svelte';
+  import { NODES } from '$lib/data/mock-nodes';
+  import { ui, openSSH, selectNode } from '$lib/state/ui.svelte';
 
   interface Props { onClose: () => void; }
   let { onClose }: Props = $props();

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { Node } from './data';
+  import type { Node } from '$lib/data/mock-nodes';
 
   interface Props {
     x: number;

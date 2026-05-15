@@ -1,7 +1,7 @@
 <script lang="ts">
-  import { NODES } from './data';
-  import { ui, type TermSession, type TermLine } from './ui-state.svelte';
-  import { runMockCommand, makeInitTerminalLines } from './terminal-mock';
+  import { NODES } from '$lib/data/mock-nodes';
+  import { ui, type TermSession, type TermLine } from '$lib/state/ui.svelte';
+  import { runMockCommand, makeInitTerminalLines } from '$lib/data/terminal-mock';
 
   interface Props { session: TermSession; }
   let { session }: Props = $props();

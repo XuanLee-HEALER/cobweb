@@ -1,8 +1,8 @@
 <script lang="ts">
-  import type { DrillState } from './ui-state.svelte';
-  import { NODES, linkLatency, linkLoss, genSeries } from './data';
-  import DualStat from './DualStat.svelte';
-  import DrillChart from './DrillChart.svelte';
+  import type { DrillState } from '$lib/state/ui.svelte';
+  import { NODES, linkLatency, linkLoss, genSeries } from '$lib/data/mock-nodes';
+  import DualStat from '$lib/components/ui/DualStat.svelte';
+  import DrillChart from '$lib/components/overlays/DrillChart.svelte';
 
   interface Props {
     drill: DrillState;

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { MeshState, AgentState } from './data';
+  import type { MeshState, AgentState } from '$lib/data/mock-nodes';
   interface Props {
     mesh: MeshState;
     agent: AgentState;

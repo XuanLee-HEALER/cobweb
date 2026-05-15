@@ -1,14 +1,14 @@
 <script lang="ts">
-  import type { Node } from './data';
+  import type { Node } from '$lib/data/mock-nodes';
   import {
     linkLatency, linkLatencyDir, linkLoss, linkTx,
     latencyQ, lossQ, txQ, fmtLatency, fmtLoss, fmtTx, hashPair,
-  } from './data';
-  import type { Metric, Direction } from './ui-state.svelte';
-  import { ui, selectNode, openContextMenu, openDrill } from './ui-state.svelte';
-  import { cellMenuItems, nodeMenuItems } from './menu-builders';
-  import DualStat from './DualStat.svelte';
-  import CellTooltip from './CellTooltip.svelte';
+  } from '$lib/data/mock-nodes';
+  import type { Metric, Direction } from '$lib/state/ui.svelte';
+  import { ui, selectNode, openContextMenu, openDrill } from '$lib/state/ui.svelte';
+  import { cellMenuItems, nodeMenuItems } from '$lib/menu-builders';
+  import DualStat from '$lib/components/ui/DualStat.svelte';
+  import CellTooltip from '$lib/components/ui/CellTooltip.svelte';
 
   interface Props {
     nodes: Node[];

@@ -1,11 +1,11 @@
 <script lang="ts">
-  import type { Node } from './data';
-  import { linkLatency } from './data';
-  import { ui } from './ui-state.svelte';
-  import Matrix from './Matrix.svelte';
-  import NodeDetailSide from './NodeDetailSide.svelte';
-  import CollapsedPanel from './CollapsedPanel.svelte';
-  import Legend from './Legend.svelte';
+  import type { Node } from '$lib/data/mock-nodes';
+  import { linkLatency } from '$lib/data/mock-nodes';
+  import { ui } from '$lib/state/ui.svelte';
+  import Matrix from '$lib/components/dashboard/Matrix.svelte';
+  import NodeDetailSide from '$lib/components/dashboard/NodeDetailSide.svelte';
+  import CollapsedPanel from '$lib/components/dashboard/CollapsedPanel.svelte';
+  import Legend from '$lib/components/ui/Legend.svelte';
 
   interface Props {
     nodes: Node[];

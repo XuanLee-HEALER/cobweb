@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { NODES } from './data';
-  import { ui } from './ui-state.svelte';
+  import { NODES } from '$lib/data/mock-nodes';
+  import { ui } from '$lib/state/ui.svelte';
 
   interface Props {
     onOpenCmdk: () => void;

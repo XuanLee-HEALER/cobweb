@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { Channel } from './data';
+  import type { Channel } from '$lib/data/mock-nodes';
   interface Props {
     channel: Channel | 'fallback' | 'via-ssh' | null | undefined;
     label?: string;

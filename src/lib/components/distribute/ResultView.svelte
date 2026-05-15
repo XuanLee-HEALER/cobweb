@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { TASK_RESULT, FAIL_DETAIL, NODES } from './data';
-  import DualStat from './DualStat.svelte';
+  import { TASK_RESULT, FAIL_DETAIL, NODES } from '$lib/data/mock-nodes';
+  import DualStat from '$lib/components/ui/DualStat.svelte';
 
   interface Props {
     capId: string;

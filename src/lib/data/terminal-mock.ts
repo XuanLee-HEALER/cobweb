@@ -1,9 +1,9 @@
 // Mock terminal command runner. Ported from cobweb-terminal.jsx.
 // Will be replaced by real PTY-over-WebSocket when agent ships.
 
-import type { Node } from "./data";
-import { NODES, peerSummary } from "./data";
-import type { TermLine } from "./ui-state.svelte";
+import type { Node } from "$lib/data/mock-nodes";
+import { NODES, peerSummary } from "$lib/data/mock-nodes";
+import type { TermLine } from "$lib/state/ui.svelte";
 
 const MOTD_LINES_BY_OS: Record<string, TermLine[]> = {
   "macOS 14.4": [

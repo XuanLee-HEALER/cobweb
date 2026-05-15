@@ -1,8 +1,8 @@
 <script lang="ts">
-  import { NODES } from './data';
-  import { ui, closeTermTab, openSSH } from './ui-state.svelte';
-  import TerminalSession from './TerminalSession.svelte';
-  import TerminalNodePicker from './TerminalNodePicker.svelte';
+  import { NODES } from '$lib/data/mock-nodes';
+  import { ui, closeTermTab, openSSH } from '$lib/state/ui.svelte';
+  import TerminalSession from '$lib/components/terminal/TerminalSession.svelte';
+  import TerminalNodePicker from '$lib/components/terminal/TerminalNodePicker.svelte';
 
   let pickerOpen = $state(false);
 

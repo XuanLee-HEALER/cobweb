@@ -100,8 +100,8 @@ export function selectNode(id: string) {
   ui.panelCollapsed = false;
 }
 
-import { NODES } from "./data";
-import { makeInitTerminalLines } from "./terminal-mock";
+import { NODES } from "$lib/data/mock-nodes";
+import { makeInitTerminalLines } from "$lib/data/terminal-mock";
 
 export function openSSH(nodeId: string) {
   const node = NODES.find((n) => n.id === nodeId);

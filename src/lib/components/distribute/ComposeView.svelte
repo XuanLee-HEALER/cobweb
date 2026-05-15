@@ -1,10 +1,10 @@
 <script lang="ts">
-  import type { Capability } from './data';
-  import { NODES } from './data';
-  import { openContextMenu } from './ui-state.svelte';
-  import { nodeMenuItems } from './menu-builders';
-  import ChannelBadge from './ChannelBadge.svelte';
-  import DualStat from './DualStat.svelte';
+  import type { Capability } from '$lib/data/mock-nodes';
+  import { NODES } from '$lib/data/mock-nodes';
+  import { openContextMenu } from '$lib/state/ui.svelte';
+  import { nodeMenuItems } from '$lib/menu-builders';
+  import ChannelBadge from '$lib/components/ui/ChannelBadge.svelte';
+  import DualStat from '$lib/components/ui/DualStat.svelte';
 
   interface Props {
     cap: Capability;

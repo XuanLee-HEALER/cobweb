@@ -1,7 +1,7 @@
 <script lang="ts">
-  import { CAPABILITIES } from './data';
-  import type { Preset } from './ui-state.svelte';
-  import ChannelBadge from './ChannelBadge.svelte';
+  import { CAPABILITIES } from '$lib/data/mock-nodes';
+  import type { Preset } from '$lib/state/ui.svelte';
+  import ChannelBadge from '$lib/components/ui/ChannelBadge.svelte';
 
   interface Props {
     active: string;

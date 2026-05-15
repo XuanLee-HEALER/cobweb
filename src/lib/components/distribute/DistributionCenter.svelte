@@ -1,11 +1,11 @@
 <script lang="ts">
-  import { CAPABILITIES, NODES, TASK_RESULT, TASK_HISTORY } from './data';
-  import { ui, type Preset } from './ui-state.svelte';
-  import CapabilityList from './CapabilityList.svelte';
-  import ComposeView from './ComposeView.svelte';
-  import ResultView from './ResultView.svelte';
-  import HistoryView from './HistoryView.svelte';
-  import ChannelBadge from './ChannelBadge.svelte';
+  import { CAPABILITIES, NODES, TASK_RESULT, TASK_HISTORY } from '$lib/data/mock-nodes';
+  import { ui, type Preset } from '$lib/state/ui.svelte';
+  import CapabilityList from '$lib/components/distribute/CapabilityList.svelte';
+  import ComposeView from '$lib/components/distribute/ComposeView.svelte';
+  import ResultView from '$lib/components/distribute/ResultView.svelte';
+  import HistoryView from '$lib/components/distribute/HistoryView.svelte';
+  import ChannelBadge from '$lib/components/ui/ChannelBadge.svelte';
 
   let selectedNodes = $state<Set<string>>(new Set(NODES.filter(n => !n.notManaged).map(n => n.id)));
   let dryRun = $state(false);

@@ -1,14 +1,14 @@
 <script lang="ts">
-  import { NODES, CAPABILITIES } from "./lib/data";
-  import { ui, closeContextMenu, closeDrill } from "./lib/ui-state.svelte";
-  import TopBar from "./lib/TopBar.svelte";
-  import StatusBar from "./lib/StatusBar.svelte";
-  import Dashboard from "./lib/Dashboard.svelte";
-  import DistributionCenter from "./lib/DistributionCenter.svelte";
-  import CommandPalette from "./lib/CommandPalette.svelte";
-  import ContextMenuHost from "./lib/ContextMenuHost.svelte";
-  import DrillDownPopover from "./lib/DrillDownPopover.svelte";
-  import TerminalDrawer from "./lib/TerminalDrawer.svelte";
+  import { NODES, CAPABILITIES } from "$lib/data/mock-nodes";
+  import { ui, closeContextMenu, closeDrill } from "$lib/state/ui.svelte";
+  import TopBar from "$lib/components/shell/TopBar.svelte";
+  import StatusBar from "$lib/components/shell/StatusBar.svelte";
+  import Dashboard from "$lib/components/dashboard/Dashboard.svelte";
+  import DistributionCenter from "$lib/components/distribute/DistributionCenter.svelte";
+  import CommandPalette from "$lib/components/overlays/CommandPalette.svelte";
+  import ContextMenuHost from "$lib/components/overlays/ContextMenuHost.svelte";
+  import DrillDownPopover from "$lib/components/overlays/DrillDownPopover.svelte";
+  import TerminalDrawer from "$lib/components/terminal/TerminalDrawer.svelte";
 
   // Locked defaults (per design chat: tweaks panel removed).
   const CELL_SIZE = 62;

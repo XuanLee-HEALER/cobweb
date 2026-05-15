@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { CtxMenuState } from './ui-state.svelte';
+  import type { CtxMenuState } from '$lib/state/ui.svelte';
 
   interface Props {
     menu: CtxMenuState;

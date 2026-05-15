@@ -1,9 +1,9 @@
 <script lang="ts">
-  import type { Node } from './data';
-  import { peerSummary, logFor, portsFor } from './data';
-  import { openSSH } from './ui-state.svelte';
-  import DualStat from './DualStat.svelte';
-  import NodeMetrics from './NodeMetrics.svelte';
+  import type { Node } from '$lib/data/mock-nodes';
+  import { peerSummary, logFor, portsFor } from '$lib/data/mock-nodes';
+  import { openSSH } from '$lib/state/ui.svelte';
+  import DualStat from '$lib/components/ui/DualStat.svelte';
+  import NodeMetrics from '$lib/components/dashboard/NodeMetrics.svelte';
 
   interface Props {
     node: Node;
