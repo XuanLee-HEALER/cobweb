@@ -14,14 +14,13 @@
   }
   let { nodes, cellSize, sidePanel }: Props = $props();
 
-  // Pulse token: increments when metric or direction changes; CSS keyframe
-  // animation re-fires on every attribute change.
-  let pulseToken = $state(0);
-  $effect(() => {
-    // touch both deps then bump.
-    ui.metric; ui.direction;
-    pulseToken++;
-  });
+  // Pulse token: changes when metric or direction changes; Matrix uses it
+  // as a data-pulse attribute so the CSS keyframe re-fires.
+  //
+  // Derived (not an effect that increments a $state) so we don't read+write
+  // the same state inside an effect — that triggers
+  // svelte/e/effect_update_depth_exceeded and freezes the whole render.
+  const pulseToken = $derived(`${ui.metric}-${ui.direction}`);
 
   const colH = $derived(Math.max(110, cellSize + 40));
   const selectedNode = $derived(nodes.find(n => n.id === ui.selectedNodeId) ?? null);

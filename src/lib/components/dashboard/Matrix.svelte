@@ -14,7 +14,7 @@
     nodes: Node[];
     metric: Metric;
     direction: Direction;
-    pulseToken: number;
+    pulseToken: string;
     cellSize: number;
     colH: number;
     selectedId: string | null;
