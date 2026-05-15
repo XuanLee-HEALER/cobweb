@@ -58,7 +58,8 @@ export const ui = $state({
   module: "dashboard" as Module,
   metric: "latency" as Metric,
   direction: "sym" as Direction,
-  selectedNodeId: "archmbp",
+  // empty until mesh state loads — App.svelte auto-selects the local node.
+  selectedNodeId: "",
 
   distCapId: "ca",
   distView: "compose" as DistView,
@@ -100,11 +101,11 @@ export function selectNode(id: string) {
   ui.panelCollapsed = false;
 }
 
-import { NODES } from "$lib/data/mock-nodes";
 import { makeInitTerminalLines } from "$lib/data/terminal-mock";
+import { mesh } from "$lib/state/mesh.svelte";
 
 export function openSSH(nodeId: string) {
-  const node = NODES.find((n) => n.id === nodeId);
+  const node = mesh.nodes.find((n) => n.id === nodeId);
   if (!node) return;
   const channel: "agent" | "ssh" | null =
     node.agent === "online" ? "agent" : node.mesh !== "offline" ? "ssh" : null;

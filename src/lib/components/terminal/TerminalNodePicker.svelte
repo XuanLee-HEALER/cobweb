@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { NODES } from '$lib/data/mock-nodes';
+  import { mesh } from "$lib/state/mesh.svelte";
   import DualStat from '$lib/components/ui/DualStat.svelte';
 
   interface Props {
@@ -19,7 +19,7 @@
     return () => window.removeEventListener('mousedown', off);
   });
 
-  const nodes = $derived(NODES.filter(n => !n.notManaged));
+  const nodes = $derived(mesh.nodes.filter(n => !n.notManaged));
 </script>
 
 <div bind:this={ref} class="term-picker">

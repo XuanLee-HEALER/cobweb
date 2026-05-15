@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { NODES } from '$lib/data/mock-nodes';
+  import { mesh } from "$lib/state/mesh.svelte";
   import { ui } from '$lib/state/ui.svelte';
 
   interface Props {
@@ -8,7 +8,7 @@
   let { onOpenCmdk }: Props = $props();
 
   const agentHealth = $derived.by(() => {
-    const managed = NODES.filter(n => !n.notManaged);
+    const managed = mesh.nodes.filter(n => !n.notManaged);
     const online = managed.filter(n => n.agent === 'online').length;
     const total = managed.length;
     return { online, total, healthy: online === total };

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { NODES } from '$lib/data/mock-nodes';
+  import { mesh } from "$lib/state/mesh.svelte";
   import { ui, openSSH, selectNode } from '$lib/state/ui.svelte';
 
   interface Props { onClose: () => void; }
@@ -24,10 +24,10 @@
       { cat: 'go', name: 'Go to Dashboard', kind: 'mod:dashboard',  keys: ['g', 'd'] },
       { cat: 'go', name: 'Go to 分发中心',  kind: 'mod:distribute', keys: ['g', 's'] },
     ];
-    const nodeCmds: Item[] = NODES.map(n => ({
+    const nodeCmds: Item[] = mesh.nodes.map(n => ({
       cat: 'node', name: `Open node · ${n.host}`, kind: 'node:' + n.id, sub: `${n.ip} · ${n.os}`,
     }));
-    const sshCmds: Item[] = NODES
+    const sshCmds: Item[] = mesh.nodes
       .filter(n => !n.notManaged && !(n.mesh === 'offline' && n.agent === 'offline'))
       .map(n => ({
         cat: 'ssh', name: `Open SSH · ${n.host}`, kind: 'ssh:' + n.id,

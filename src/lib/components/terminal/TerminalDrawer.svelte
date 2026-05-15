@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { NODES } from '$lib/data/mock-nodes';
+  import { mesh } from "$lib/state/mesh.svelte";
   import { ui, closeTermTab, openSSH } from '$lib/state/ui.svelte';
   import TerminalSession from '$lib/components/terminal/TerminalSession.svelte';
   import TerminalNodePicker from '$lib/components/terminal/TerminalNodePicker.svelte';
@@ -12,7 +12,7 @@
 <div class="term-drawer">
   <div class="term-tabs">
     {#each ui.termSessions as s (s.id)}
-      {@const n = NODES.find(nn => nn.id === s.nodeId)}
+      {@const n = mesh.nodes.find(nn => nn.id === s.nodeId)}
       {#if n}
         <div
           class="term-tab"

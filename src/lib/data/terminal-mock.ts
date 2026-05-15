@@ -2,7 +2,8 @@
 // Will be replaced by real PTY-over-WebSocket when agent ships.
 
 import type { Node } from "$lib/data/mock-nodes";
-import { NODES, peerSummary } from "$lib/data/mock-nodes";
+import { peerSummary } from "$lib/data/mock-nodes";
+import { mesh } from "$lib/state/mesh.svelte";
 import type { TermLine } from "$lib/state/ui.svelte";
 
 const MOTD_LINES_BY_OS: Record<string, TermLine[]> = {
@@ -176,7 +177,7 @@ SUPPORT_URL="https://example.com/support"`,
       const rows = peers.map((p) => {
         const rtt = p.ms < 0 ? "×" : `${p.ms}ms`;
         const loss = p.loss < 0 ? "×" : `${p.loss.toFixed(1)}%`;
-        const peerNode = NODES.find((n) => n.id === p.id);
+        const peerNode = mesh.nodes.find((n) => n.id === p.id);
         return `${p.host.padEnd(14)}${(peerNode?.region ?? "-").padEnd(10)}${rtt.padEnd(8)}${loss.padEnd(8)}${peerNode?.proto ?? "-"}`;
       });
       return {

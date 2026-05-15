@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { TASK_RESULT, FAIL_DETAIL, NODES } from '$lib/data/mock-nodes';
+  import { mesh } from '$lib/state/mesh.svelte';
+  import { tasks } from '$lib/state/tasks.svelte';
   import DualStat from '$lib/components/ui/DualStat.svelte';
 
   interface Props {
@@ -9,11 +10,14 @@
 
   let expandedFail = $state<string | null>(null);
 
-  const task = $derived(TASK_RESULT[capId]);
+  const task = $derived(tasks.byCapId[capId]);
+  const isRunning = $derived(!!tasks.running[capId]);
 
   const tallies = $derived.by(() => {
     if (!task) return { fail: 0, ok: 0, total: 0, running: false };
-    let fail = 0, ok = 0, total = 0;
+    let fail = 0,
+      ok = 0,
+      total = 0;
     let running = false;
     for (const r of task.rows) {
       for (const c of r.cells) {
@@ -26,25 +30,35 @@
     return { fail, ok, total, running };
   });
 
-  const failedRows = $derived.by(() => {
+  type FailedRow = { row: { node: string; cells: string[]; failStep?: number }; idx: number };
+  const failedRows = $derived.by<FailedRow[]>(() => {
     if (!task) return [];
     return task.rows
-      .map(r => ({ row: r, idx: r.cells.findIndex(c => c === 'fail') }))
+      .map((r) => ({ row: r, idx: r.cells.findIndex((c) => c === 'fail') }))
       .filter(({ idx }) => idx >= 0);
   });
 
   const glyphFor: Record<string, string> = {
-    ok: '✓', fail: '✗', warn: '!', skip: '–', run: '◐', queue: '·',
+    ok: '✓',
+    fail: '✗',
+    warn: '!',
+    skip: '–',
+    run: '◐',
+    queue: '·',
   };
 
-  function failDetail(nodeId: string, capId: string, stepName: string) {
-    const key = `${nodeId}:${capId}:${stepName.split(' ')[0]}`;
-    return FAIL_DETAIL[key] ?? FAIL_DETAIL[`${nodeId}:${capId}:probe`];
+  function failDetail(nodeId: string, stepIdx: number) {
+    if (!task?.failDetails) return null;
+    return task.failDetails[`${nodeId}:${stepIdx}`] ?? null;
   }
 </script>
 
-{#if !task}
-  <div class="cap-section">no recent task.</div>
+{#if isRunning && !task}
+  <div class="cap-section" style="font-family: var(--font-mono); color: var(--status-info)">
+    <span style="opacity: 0.8">●</span> running… waiting for first results.
+  </div>
+{:else if !task}
+  <div class="cap-section">no recent task. submit a task from the Compose tab to see results here.</div>
 {:else}
   <div class="cap-section">
     <div class="row gap-4" style="align-items: baseline">
@@ -53,13 +67,16 @@
         {task.id} · started {task.startedAt} · {task.elapsed}
       </span>
       <span class="spacer"></span>
-      {#if tallies.running}<span style="font-family: var(--font-mono); font-size: 11px; color: var(--status-info)">● running</span>{/if}
+      {#if isRunning || tallies.running}
+        <span style="font-family: var(--font-mono); font-size: 11px; color: var(--status-info)">● running</span>
+      {/if}
       {#if tallies.fail > 0}<button class="icon-btn danger">↻ Retry {tallies.fail} failed</button>{/if}
       <button class="icon-btn">Cancel</button>
       <button class="icon-btn">Export log</button>
     </div>
     <div style="margin-top: 8px; font-family: var(--font-mono); font-size: 12px; color: var(--fg-tertiary)">
-      {tallies.ok} ok · <span style="color: var(--status-error)">{tallies.fail} fail</span> · {tallies.total - tallies.ok - tallies.fail} other · total {tallies.total}
+      {tallies.ok} ok · <span style="color: var(--status-error)">{tallies.fail} fail</span> ·
+      {tallies.total - tallies.ok - tallies.fail} other · total {tallies.total}
     </div>
   </div>
 
@@ -76,11 +93,11 @@
         </div>
         <div class="fs-chips">
           {#each failedRows as { row, idx } (row.node)}
-            {@const node = NODES.find(n => n.id === row.node)}
+            {@const node = mesh.nodes.find((n) => n.id === row.node)}
             {@const stepName = task.steps[idx]}
             {@const key = `${row.node}:${capId}:${idx}`}
             {@const active = expandedFail === key}
-            <button class="fs-chip" class:active onclick={() => expandedFail = active ? null : key}>
+            <button class="fs-chip" class:active onclick={() => (expandedFail = active ? null : key)}>
               <span class="fs-chip-host">{node?.host ?? row.node}</span>
               <span class="fs-chip-step">{stepName}</span>
             </button>
@@ -101,7 +118,7 @@
           </thead>
           <tbody>
             {#each task.rows as row (row.node)}
-              {@const n = NODES.find(nn => nn.id === row.node)}
+              {@const n = mesh.nodes.find((nn) => nn.id === row.node)}
               {@const hasFail = row.cells.includes('fail')}
               <tr class:failed-row={hasFail}>
                 <td class="node">
@@ -122,7 +139,7 @@
                 {/each}
               </tr>
               {#if row.failStep != null && expandedFail === `${row.node}:${capId}:${row.failStep}`}
-                {@const detail = failDetail(row.node, capId, task.steps[row.failStep])}
+                {@const detail = failDetail(row.node, row.failStep)}
                 {#if detail}
                   <tr>
                     <td colspan={task.steps.length + 1} style="padding: 4px 10px 10px; background: var(--bg-base)">
@@ -134,7 +151,7 @@
                             <button class="icon-btn primary">↻ Retry this step</button>
                           </span>
                         </div>
-                        <pre>{#each detail.stderr.split('\n') as l, li (li)}<div><span class={l.startsWith('+') ? 'cmd-prefix' : (l.includes('Permission denied') || l.includes('ERROR') || l.startsWith('exit code')) ? 'err-line' : ''}>{l || ' '}</span></div>{/each}</pre>
+                        <pre>{#each detail.stderr.split('\n') as l, li (li)}<div><span class={l.startsWith('+') ? 'cmd-prefix' : l.includes('Permission denied') || l.includes('ERROR') || l.startsWith('exit code') ? 'err-line' : ''}>{l || ' '}</span></div>{/each}</pre>
                       </div>
                     </td>
                   </tr>
@@ -147,7 +164,8 @@
     </div>
 
     <div style="margin-top: 10px; font-family: var(--font-mono); font-size: 11px; color: var(--fg-disabled)">
-      click <span style="color: var(--status-error)">✗</span> for the failing command and full stderr · click <span style="color: var(--status-info)">↻</span> to retry only that node-step
+      click <span style="color: var(--status-error)">✗</span> for the failing command and full stderr · click
+      <span style="color: var(--status-info)">↻</span> to retry only that node-step
     </div>
   </div>
 {/if}

@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Capability } from '$lib/data/mock-nodes';
-  import { NODES } from '$lib/data/mock-nodes';
+  import { mesh } from '$lib/state/mesh.svelte';
   import { openContextMenu } from '$lib/state/ui.svelte';
   import { nodeMenuItems } from '$lib/menu-builders';
   import ChannelBadge from '$lib/components/ui/ChannelBadge.svelte';
@@ -25,7 +25,7 @@
     dryRun, setDryRun, onSubmit, presetDraft, setPresetDraft, onSavePreset,
   }: Props = $props();
 
-  const managed = $derived(NODES.filter(n => !n.notManaged));
+  const managed = $derived(mesh.nodes.filter((n) => !n.notManaged));
 
   const blockedCount = $derived(
     managed.filter(n => selectedNodes.has(n.id) && n.mesh === 'offline' && n.agent === 'offline').length

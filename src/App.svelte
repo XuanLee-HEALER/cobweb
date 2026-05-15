@@ -1,6 +1,8 @@
 <script lang="ts">
-  import { NODES, CAPABILITIES } from "$lib/data/mock-nodes";
+  import { CAPABILITIES } from "$lib/data/mock-nodes";
   import { ui, closeContextMenu, closeDrill } from "$lib/state/ui.svelte";
+  import { initMesh, mesh } from "$lib/state/mesh.svelte";
+  import { loadTaskHistory } from "$lib/state/tasks.svelte";
   import TopBar from "$lib/components/shell/TopBar.svelte";
   import StatusBar from "$lib/components/shell/StatusBar.svelte";
   import Dashboard from "$lib/components/dashboard/Dashboard.svelte";
@@ -15,7 +17,23 @@
   const VISIBLE_NODES = 12;
   const SIDE_PANEL_VISIBLE = true;
 
-  const visibleNodes = $derived(NODES.slice(0, VISIBLE_NODES));
+  const visibleNodes = $derived(mesh.nodes.slice(0, VISIBLE_NODES));
+
+  // Boot data fetch on mount: peer-center + agents + recent tasks.
+  $effect(() => {
+    initMesh();
+    loadTaskHistory();
+  });
+
+  // When mesh loads, auto-select the local node if the current selection
+  // doesn't match any real node (default was a static mock id).
+  $effect(() => {
+    if (!mesh.loaded) return;
+    const stillValid = mesh.nodes.some((n) => n.id === ui.selectedNodeId);
+    if (!stillValid) {
+      ui.selectedNodeId = mesh.selfId || mesh.nodes[0]?.id || "";
+    }
+  });
 
   // ── Hash routing ──────────────────────────────────────────────────
   $effect(() => {
@@ -26,7 +44,11 @@
       const head = parts[0];
       if (head === "d" || head === "dashboard") {
         ui.module = "dashboard";
-        if (parts[1] && NODES.some(n => n.id === parts[1])) {
+        if (parts[1] && mesh.nodes.some((n) => n.id === parts[1])) {
+          ui.selectedNodeId = parts[1];
+        } else if (parts[1]) {
+          // mesh may not have loaded yet — remember the requested id and
+          // the auto-select effect above will keep it if it shows up.
           ui.selectedNodeId = parts[1];
         }
       } else if (head === "x" || head === "distribute") {

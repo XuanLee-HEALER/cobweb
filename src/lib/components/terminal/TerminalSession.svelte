@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { NODES } from '$lib/data/mock-nodes';
+  import { mesh } from "$lib/state/mesh.svelte";
   import { ui, type TermSession, type TermLine } from '$lib/state/ui.svelte';
   import { runMockCommand, makeInitTerminalLines } from '$lib/data/terminal-mock';
 
@@ -11,7 +11,7 @@
   let scrollRef = $state<HTMLDivElement | null>(null);
   let inputRef = $state<HTMLInputElement | null>(null);
 
-  const node = $derived(NODES.find(n => n.id === session.nodeId));
+  const node = $derived(mesh.nodes.find(n => n.id === session.nodeId));
 
   $effect(() => {
     // re-run on lines change → scroll to bottom

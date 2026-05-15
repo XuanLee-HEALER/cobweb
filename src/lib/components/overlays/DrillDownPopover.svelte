@@ -1,6 +1,7 @@
 <script lang="ts">
+  import { mesh } from "$lib/state/mesh.svelte";
   import type { DrillState } from '$lib/state/ui.svelte';
-  import { NODES, linkLatency, linkLoss, genSeries } from '$lib/data/mock-nodes';
+  import { linkLatency, linkLoss, genSeries  } from "$lib/data/mock-nodes";
   import DualStat from '$lib/components/ui/DualStat.svelte';
   import DrillChart from '$lib/components/overlays/DrillChart.svelte';
 
@@ -20,8 +21,8 @@
     return () => window.removeEventListener('mousedown', off);
   });
 
-  const a = $derived(NODES.find(n => n.id === drill.aId));
-  const b = $derived(NODES.find(n => n.id === drill.bId));
+  const a = $derived(mesh.nodes.find(n => n.id === drill.aId));
+  const b = $derived(mesh.nodes.find(n => n.id === drill.bId));
   const baseRtt  = $derived(a && b ? linkLatency(a, b) ?? 0 : 0);
   const baseLoss = $derived(a && b ? linkLoss(a, b) ?? 0 : 0);
   const unreach  = $derived(baseRtt < 0);
