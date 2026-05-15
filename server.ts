@@ -1,15 +1,26 @@
-// EasyTier mesh dashboard backend.
-// Run: bun server.ts
+// cobweb backend — Hono RPC over Bun.
+// Run: bun server.ts (production) or `vite dev` proxied to this (development).
 
 import { createHash } from "node:crypto";
+import { EventEmitter } from "node:events";
 import { chmodSync, existsSync, readFileSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, normalize } from "node:path";
+import { Hono } from "hono";
+import { streamSSE } from "hono/streaming";
+
+function defaultCliPath(): string {
+  if (process.platform === "win32") {
+    const userProfile = process.env.USERPROFILE ?? "C:\\Users\\Default";
+    return `${userProfile}\\bin\\easytier\\easytier-cli.exe`;
+  }
+  return "/usr/local/bin/easytier-cli";
+}
 
 const RPC = process.env.ET_RPC ?? "127.0.0.1:15888";
 const PORT = Number(process.env.PORT ?? 8088);
-const HOST = process.env.HOST ?? "10.177.0.1";
-const CLI = process.env.ET_CLI ?? "/usr/local/bin/easytier-cli";
+const HOST = process.env.HOST ?? "127.0.0.1";
+const CLI = process.env.ET_CLI ?? defaultCliPath();
 const SAMPLE_INTERVAL_MS = Number(process.env.SAMPLE_INTERVAL_MS ?? 5000);
 const HISTORY_LEN = Number(process.env.HISTORY_LEN ?? 720);
 const ROOT = import.meta.dir;
@@ -61,7 +72,7 @@ function mimeFor(path: string): string {
 
 // ────── easytier-cli ──────────────────────────────────────────────────────
 
-interface PeerRaw {
+export interface PeerRaw {
   cidr: string;
   ipv4: string;
   hostname: string;
@@ -75,10 +86,61 @@ interface PeerRaw {
   id: string;
   version: string;
 }
-interface StatRaw {
+export interface StatRaw {
   name: string;
   value: number;
   labels: Record<string, string>;
+}
+export interface PeerCenterPeer {
+  node_id: string;
+  hostname: string;
+  ipv4: string;
+  latency_ms: number;
+}
+export interface PeerCenterEntry {
+  node_id: string;
+  hostname: string;
+  ipv4: string;
+  direct_peers: PeerCenterPeer[];
+}
+
+// Minimal subset of `easytier-cli node info` output that the UI reads.
+// Real CLI output has more fields; declare loose to avoid version coupling.
+export interface NodeInfo {
+  peer_id: number | string;
+  ipv4_addr: string;
+  hostname: string;
+  version: string;
+  listeners?: string[];
+  stun_info?: { udp_nat_type?: number; tcp_nat_type?: number; public_ip?: string[] };
+  [k: string]: unknown;
+}
+
+// Agent registry entry. Empty list until cobweb-agent ships.
+export interface AgentInfo {
+  peerId: string;
+  status: "online" | "offline";
+  version?: string;
+}
+
+// Shape consumed by the UI's task result matrix.
+export type CellKind = "ok" | "fail" | "warn" | "skip" | "run" | "queue";
+export interface TaskRow {
+  node: string;
+  mesh: "online" | "degraded" | "offline";
+  agent: "online" | "offline";
+  cells: CellKind[];
+  failStep?: number;
+}
+export interface TaskResult {
+  id: string;
+  name: string;
+  startedAt: string;
+  finishedAt: string;
+  elapsed: string;
+  steps: string[];
+  rows: TaskRow[];
+  failDetails?: Record<string, { cmd: string; exit: number; duration: string; stderr: string }>;
 }
 
 async function cli<T = unknown>(args: string[]): Promise<T> {
@@ -140,7 +202,13 @@ function parseLoss(s: string): number {
   return Number.isNaN(v) ? 0 : v;
 }
 
+// Internal pub/sub for SSE clients. Two channels: per-sample local view
+// (the sampler runs on this node, every SAMPLE_INTERVAL_MS) and the global
+// peer-center view (cli "peer-center", same cadence).
+const events = new EventEmitter();
+
 const samples: Sample[] = [];
+let latestPeerCenter: PeerCenterEntry[] = [];
 async function takeSample(): Promise<Sample | null> {
   try {
     const [peers, stats] = await Promise.all([cli<PeerRaw[]>(["peer"]), cli<StatRaw[]>(["stats"])]);
@@ -173,6 +241,16 @@ async function sampleLoop() {
   if (s) {
     samples.push(s);
     if (samples.length > HISTORY_LEN) samples.shift();
+    events.emit("sample", s);
+  }
+  // peer-center: full N×N latency view from any mesh node. Cheap (single RPC).
+  try {
+    const pc = await cli<PeerCenterEntry[]>(["peer-center"]);
+    latestPeerCenter = pc;
+    events.emit("peer-center", pc);
+  } catch (e) {
+    // easytier-cli unavailable or RPC unreachable — log once, keep last good.
+    console.warn("peer-center failed:", e instanceof Error ? e.message : e);
   }
 }
 sampleLoop();
@@ -1011,36 +1089,78 @@ async function caApply(): Promise<{ logs: ApplyLog[]; sha256: string }> {
   return { logs, sha256: expectedSha };
 }
 
-// ────── http server ───────────────────────────────────────────────────────
+// ────── task store (in-memory) ────────────────────────────────────────────
+// Apply endpoints return TaskResult synchronously; we also remember them so
+// the History view can list recent runs. Capped at 50 entries.
 
-const apiHandlers: Record<string, (req: Request) => Promise<unknown>> = {
-  "/api/peers": async () => cli(["peer"]),
-  "/api/peer-center": async () => cli(["peer-center"]),
-  "/api/route": async () => cli(["route"]),
-  "/api/stats": async () => cli(["stats"]),
-  "/api/history": async () => samples,
-  "/api/mesh/nodes": async () => loadNodes(),
-  "/api/mesh/status": async () => meshStatus(),
-  "/api/mesh/init-keys": async (req) => {
-    if (req.method !== "POST") throw new Error("POST required");
-    const url = new URL(req.url);
-    return meshInitKeys(url.searchParams.get("force") === "1");
-  },
-  "/api/mesh/apply": async (req) => {
-    if (req.method !== "POST") throw new Error("POST required");
-    return meshApply();
-  },
-  "/api/mesh/dns/status": async () => dnsStatus(),
-  "/api/mesh/dns/apply": async (req) => {
-    if (req.method !== "POST") throw new Error("POST required");
-    return dnsApply();
-  },
-  "/api/mesh/ca/status": async () => caStatus(),
-  "/api/mesh/ca/apply": async (req) => {
-    if (req.method !== "POST") throw new Error("POST required");
-    return caApply();
-  },
-};
+const tasks: TaskResult[] = [];
+const MAX_TASK_HISTORY = 50;
+
+function newTaskId(): string {
+  return `task-${Math.floor(Date.now() / 1000).toString(36)}`;
+}
+
+function fmtHms(ms: number): string {
+  const d = new Date(ms);
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}:${String(d.getSeconds()).padStart(2, "0")}`;
+}
+
+function applyLogsToTaskResult(name: string, logs: ApplyLog[], startedAt: number): TaskResult {
+  // Take the union of step names in encounter order. Apply paths short-circuit
+  // on failure, so some logs have fewer steps than others; we backfill "skip".
+  const canonicalSteps: string[] = [];
+  for (const log of logs) {
+    for (const s of log.steps) if (!canonicalSteps.includes(s.step)) canonicalSteps.push(s.step);
+  }
+
+  const failDetails: NonNullable<TaskResult["failDetails"]> = {};
+  const rows: TaskRow[] = logs.map((log) => {
+    const cells: CellKind[] = canonicalSteps.map((stepName) => {
+      const step = log.steps.find((s) => s.step === stepName);
+      if (!step) return "skip";
+      return step.ok ? "ok" : "fail";
+    });
+    const failStep = cells.indexOf("fail");
+    // Collect stderr/details for failed steps so the UI can show them inline.
+    for (let i = 0; i < log.steps.length; i++) {
+      const s = log.steps[i];
+      if (!s.ok && s.detail) {
+        const idx = canonicalSteps.indexOf(s.step);
+        if (idx >= 0) {
+          failDetails[`${log.node}:${idx}`] = {
+            cmd: s.step,
+            exit: -1,
+            duration: "—",
+            stderr: s.detail,
+          };
+        }
+      }
+    }
+    return {
+      node: log.node,
+      mesh: "online",
+      agent: "offline",
+      cells,
+      failStep: failStep >= 0 ? failStep : undefined,
+    };
+  });
+
+  const result: TaskResult = {
+    id: newTaskId(),
+    name,
+    startedAt: fmtHms(startedAt),
+    finishedAt: fmtHms(Date.now()),
+    elapsed: `${((Date.now() - startedAt) / 1000).toFixed(1)}s`,
+    steps: canonicalSteps,
+    rows,
+    failDetails: Object.keys(failDetails).length ? failDetails : undefined,
+  };
+  tasks.unshift(result);
+  if (tasks.length > MAX_TASK_HISTORY) tasks.length = MAX_TASK_HISTORY;
+  return result;
+}
+
+// ────── http server (Hono) ────────────────────────────────────────────────
 
 function safeStaticPath(urlPath: string): string | null {
   let rel = urlPath === "/" ? "/index.html" : urlPath;
@@ -1052,38 +1172,110 @@ function safeStaticPath(urlPath: string): string | null {
   return full;
 }
 
-const server = Bun.serve({
-  port: PORT,
-  hostname: HOST,
-  idleTimeout: 255, // Bun max; mesh/apply can take a minute+
-  async fetch(req) {
-    const url = new URL(req.url);
-    const path = url.pathname;
-    const apiHandler = apiHandlers[path];
-    if (apiHandler) {
-      try {
-        const data = await apiHandler(req);
-        return Response.json(data);
-      } catch (e: unknown) {
-        return Response.json({ error: String(e) }, { status: 500 });
+const app = new Hono()
+  // Global error trap — handlers may throw freely; we project to JSON 500.
+  .onError((e, c) => c.json({ error: String(e) }, 500))
+
+  // ── local easytier RPC mirrors ─────────────────────────────────
+  .get("/api/peers", async (c) => c.json(await cli<PeerRaw[]>(["peer"])))
+  .get("/api/peer-center", async (c) => c.json(await cli<PeerCenterEntry[]>(["peer-center"])))
+  .get("/api/peer-center/cached", (c) => c.json(latestPeerCenter))
+  .get("/api/stats", async (c) => c.json(await cli<StatRaw[]>(["stats"])))
+  .get("/api/route", async (c) => c.json(await cli<unknown>(["route"])))
+  .get("/api/node-info", async (c) => c.json(await cli<NodeInfo>(["node", "info"])))
+  .get("/api/history", (c) => c.json(samples))
+
+  // ── mesh management (uses nodes.json + ssh) ────────────────────
+  .get("/api/mesh/nodes", (c) => c.json(loadNodes()))
+  .get("/api/mesh/status", async (c) => c.json(await meshStatus()))
+  .post("/api/mesh/init-keys", async (c) => {
+    const force = c.req.query("force") === "1";
+    return c.json(await meshInitKeys(force));
+  })
+
+  // ── distribute apply endpoints (sync; return TaskResult) ───────
+  .post("/api/mesh/apply", async (c) => {
+    const t = Date.now();
+    const { logs } = await meshApply();
+    return c.json(applyLogsToTaskResult("SSH key + mesh ssh · apply", logs, t));
+  })
+  .get("/api/mesh/dns/status", async (c) => c.json(await dnsStatus()))
+  .post("/api/mesh/dns/apply", async (c) => {
+    const t = Date.now();
+    const { logs } = await dnsApply();
+    return c.json(applyLogsToTaskResult(`DNS 设置 · ${DNS_DOMAIN}`, logs, t));
+  })
+  .get("/api/mesh/ca/status", async (c) => c.json(await caStatus()))
+  .post("/api/mesh/ca/apply", async (c) => {
+    const t = Date.now();
+    const { logs, sha256 } = await caApply();
+    return c.json(applyLogsToTaskResult(`CA 信任根分发 · ${sha256.slice(0, 12)}…`, logs, t));
+  })
+
+  // ── task store ─────────────────────────────────────────────────
+  .get("/api/tasks", (c) => c.json(tasks))
+  .get("/api/tasks/:id", (c) => {
+    const id = c.req.param("id");
+    const t = tasks.find((x) => x.id === id);
+    if (!t) return c.json({ error: "task not found" }, 404);
+    return c.json(t);
+  })
+
+  // ── agent placeholder (no agent infrastructure yet) ────────────
+  .get("/api/agents", (c) => c.json([] as AgentInfo[]))
+
+  // ── SSE: pushes peer-center + samples whenever they refresh ────
+  .get("/api/stream", (c) =>
+    streamSSE(c, async (stream) => {
+      // initial snapshot — send last known peer-center and the full history
+      // window so the client can paint without waiting for the next sample.
+      if (latestPeerCenter.length > 0) {
+        await stream.writeSSE({ event: "peer-center", data: JSON.stringify(latestPeerCenter) });
       }
-    }
-    const filePath = safeStaticPath(path);
+      await stream.writeSSE({ event: "history", data: JSON.stringify(samples) });
+
+      const onSample = (s: Sample) =>
+        stream.writeSSE({ event: "sample", data: JSON.stringify(s) }).catch(() => {});
+      const onPc = (pc: PeerCenterEntry[]) =>
+        stream.writeSSE({ event: "peer-center", data: JSON.stringify(pc) }).catch(() => {});
+      events.on("sample", onSample);
+      events.on("peer-center", onPc);
+      stream.onAbort(() => {
+        events.off("sample", onSample);
+        events.off("peer-center", onPc);
+      });
+
+      // keep open until the client aborts
+      while (!stream.aborted) await stream.sleep(60_000);
+    }),
+  )
+
+  // ── static + SPA fallback (production) ─────────────────────────
+  .get("*", (c) => {
+    const url = new URL(c.req.url);
+    const filePath = safeStaticPath(url.pathname);
     if (filePath)
-      return new Response(Bun.file(filePath), { headers: { "Content-Type": mimeFor(filePath) } });
+      return new Response(Bun.file(filePath), {
+        headers: { "Content-Type": mimeFor(filePath) },
+      });
     const fallback = safeStaticPath("/index.html");
     if (fallback)
       return new Response(Bun.file(fallback), {
         headers: { "Content-Type": "text/html; charset=utf-8" },
       });
-    return new Response("not found", { status: 404 });
-  },
+    return c.text("not found", 404);
+  });
+
+export type AppType = typeof app;
+
+Bun.serve({
+  port: PORT,
+  hostname: HOST,
+  idleTimeout: 255, // Bun max; mesh/apply can take a minute+
+  fetch: app.fetch,
 });
 
-console.log(`etmesh dashboard: http://${server.hostname}:${server.port}/`);
-console.log(
-  `  api: peers,peer-center,route,stats,history,mesh/{nodes,status,init-keys,apply,dns/{status,apply},ca/{status,apply}}`,
-);
-console.log(`  sampler: every ${SAMPLE_INTERVAL_MS}ms, retain ${HISTORY_LEN} points`);
+console.log(`cobweb backend: http://${HOST}:${PORT}/`);
+console.log(`  cli: ${CLI}`);
 console.log(`  nodes file: ${NODES_FILE}`);
-console.log(`  key path: ${KEY_PATH}`);
+console.log(`  sampler: every ${SAMPLE_INTERVAL_MS}ms · history ${HISTORY_LEN} points`);
