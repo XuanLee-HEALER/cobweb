@@ -1,0 +1,32 @@
+# build / deps
+node_modules/
+dist/
+.vite/
+*.tsbuildinfo
+
+# local secrets (cobweb-managed)
+.secrets/
+etmesh-id_ed25519
+etmesh-id_ed25519.pub
+etmesh-ca.crt
+nodes.json
+*.pem
+*.key
+*.crt
+!docs/**/*.crt
+
+# env
+.env
+.env.local
+.env.*.local
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.bak
+*.bak.*
+
+# claude session state (transient)
+.claude/
