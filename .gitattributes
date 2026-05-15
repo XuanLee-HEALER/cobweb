@@ -1,0 +1,12 @@
+# normalize line endings — keep LF in repo, let git stamp native on checkout
+* text=auto eol=lf
+
+# shell hook scripts must be LF even on Windows
+scripts/hooks/* text eol=lf
+
+# binary
+*.png binary
+*.jpg binary
+*.gif binary
+*.ico binary
+*.woff2 binary

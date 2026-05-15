@@ -1,0 +1,10 @@
+#!/bin/sh
+# cobweb pre-push hook
+# Runs lint + typecheck via `just check` before allowing the push.
+# Bypass with `git push --no-verify` only when truly necessary.
+
+set -e
+
+echo "→ pre-push · just check"
+just check
+echo "✓ pre-push ok"
