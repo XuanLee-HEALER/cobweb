@@ -9,5 +9,6 @@ pub mod collectors;
 pub mod config;
 pub mod connection;
 pub mod dispatcher;
+pub mod logging;
 pub mod protocol;
 pub mod transport;

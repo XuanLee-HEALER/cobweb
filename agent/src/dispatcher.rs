@@ -11,7 +11,7 @@ use std::{collections::HashMap, sync::Arc};
 use anyhow::Result;
 use base64::{Engine, prelude::BASE64_STANDARD};
 use tokio::sync::{Mutex, mpsc};
-use tracing::{debug, warn};
+use tracing::{debug, info, warn};
 
 use crate::{
     capabilities::{
@@ -53,15 +53,17 @@ impl Dispatcher {
         out: &mpsc::Sender<AgentMessage>,
     ) -> Result<bool> {
         match msg {
-            ServerMessage::HelloAck { .. } => Ok(true),
+            ServerMessage::HelloAck { server_version, .. } => {
+                info!(%server_version, "dispatch: hello_ack");
+                Ok(true)
+            }
 
             ServerMessage::CliInvoke {
                 request_id,
                 args,
                 json_output,
             } => {
-                // `json_output` defaults to false on the wire; we always want
-                // JSON from easytier-cli regardless.
+                info!(%request_id, ?args, "dispatch: cli.invoke");
                 let _ = json_output;
                 let result = cli_cap::invoke(
                     &self.cfg.easytier_cli,
@@ -71,11 +73,18 @@ impl Dispatcher {
                     true,
                 )
                 .await;
+                debug!("cli.invoke complete, sending cli.result");
                 let _ = out.send(AgentMessage::CliResult(result)).await;
                 Ok(true)
             }
 
             ServerMessage::ExecStart(start) => {
+                info!(
+                    task_id = %start.task_id,
+                    argv_head = ?start.argv.first(),
+                    timeout_ms = start.timeout_ms,
+                    "dispatch: exec.start"
+                );
                 let task_id = start.task_id.clone();
                 match self.exec.start(start).await {
                     Ok(mut rx) => {
@@ -114,7 +123,9 @@ impl Dispatcher {
             }
 
             ServerMessage::ExecSignal { task_id, signal } => {
+                info!(%task_id, ?signal, "dispatch: exec.signal");
                 if let Err(e) = self.exec.signal(&task_id, signal).await {
+                    warn!(%task_id, error = %e, "exec.signal failed");
                     let _ = out
                         .send(AgentMessage::Error {
                             request_id: None,
@@ -126,12 +137,14 @@ impl Dispatcher {
             }
 
             ServerMessage::ExecStdin { task_id, data, close } => {
+                debug!(%task_id, len = data.len(), close, "dispatch: exec.stdin");
                 let bytes = if data.is_empty() {
                     Vec::new()
                 } else {
                     match BASE64_STANDARD.decode(data.as_bytes()) {
                         Ok(b) => b,
                         Err(e) => {
+                            warn!(%task_id, error = %e, "exec.stdin base64 decode failed");
                             let _ = out
                                 .send(AgentMessage::Error {
                                     request_id: None,
@@ -149,12 +162,24 @@ impl Dispatcher {
                 Ok(true)
             }
 
-            ServerMessage::FilePutStart(start) => self.handle_put_start(start, out).await,
+            ServerMessage::FilePutStart(start) => {
+                info!(
+                    task_id = %start.task_id,
+                    path = %start.path,
+                    size = start.size,
+                    chunk_size = start.chunk_size,
+                    compression = ?start.compression,
+                    "dispatch: file.put.start"
+                );
+                self.handle_put_start(start, out).await
+            }
 
             ServerMessage::FilePutChunk { task_id, seq, data } => {
+                debug!(%task_id, seq, payload = data.len(), "dispatch: file.put.chunk");
                 let mut sessions = self.put_sessions.lock().await;
                 if let Some(sess) = sessions.get_mut(&task_id) {
                     if let Err(e) = sess.write_chunk(seq, &data).await {
+                        warn!(%task_id, seq, error = %e, "file.put.chunk write failed");
                         let _ = out
                             .send(AgentMessage::FilePutDone {
                                 task_id: task_id.clone(),
@@ -171,19 +196,24 @@ impl Dispatcher {
                             bytes: sess.bytes_written,
                         })
                         .await;
+                } else {
+                    warn!(%task_id, "file.put.chunk for unknown session");
                 }
                 Ok(true)
             }
 
             ServerMessage::FilePutEnd { task_id } => {
+                info!(%task_id, "dispatch: file.put.end");
                 let sess = {
                     let mut sessions = self.put_sessions.lock().await;
                     sessions.remove(&task_id)
                 };
                 if let Some(sess) = sess {
                     let id = sess.task_id.clone();
+                    let bytes = sess.bytes_written;
                     match sess.finish().await {
                         Ok(()) => {
+                            info!(task_id = %id, bytes, "file.put complete");
                             let _ = out
                                 .send(AgentMessage::FilePutDone {
                                     task_id: id,
@@ -193,6 +223,7 @@ impl Dispatcher {
                                 .await;
                         }
                         Err(e) => {
+                            warn!(task_id = %id, error = %e, "file.put finalise failed");
                             let _ = out
                                 .send(AgentMessage::FilePutDone {
                                     task_id: id,
@@ -202,26 +233,41 @@ impl Dispatcher {
                                 .await;
                         }
                     }
+                } else {
+                    warn!(%task_id, "file.put.end for unknown session");
                 }
                 Ok(true)
             }
 
-            ServerMessage::FileGetStart(start) => self.handle_get_start(start, out).await,
+            ServerMessage::FileGetStart(start) => {
+                info!(
+                    task_id = %start.task_id,
+                    path = %start.path,
+                    range_from = start.range_from,
+                    range_to = ?start.range_to,
+                    chunk_size = start.chunk_size,
+                    prefer_compression = ?start.prefer_compression,
+                    "dispatch: file.get.start"
+                );
+                self.handle_get_start(start, out).await
+            }
 
-            ServerMessage::FileGetAckEnd { task_id: _, ok, error } => {
-                if !ok {
-                    warn!(?error, "server reported file.get.ack-end with error");
+            ServerMessage::FileGetAckEnd { task_id, ok, error } => {
+                if ok {
+                    info!(%task_id, "file.get acknowledged by server");
+                } else {
+                    warn!(%task_id, ?error, "server reported file.get.ack-end with error");
                 }
                 Ok(true)
             }
 
             ServerMessage::ReplayAck { up_to } => {
-                debug!(up_to, "replay.ack");
+                info!(up_to, "dispatch: replay.ack — server consumed backlog");
                 Ok(true)
             }
 
             ServerMessage::Shutdown { restart } => {
-                debug!(restart, "shutdown requested");
+                info!(restart, "dispatch: shutdown");
                 Ok(false)
             }
         }

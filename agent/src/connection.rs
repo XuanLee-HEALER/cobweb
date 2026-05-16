@@ -16,7 +16,7 @@ use tokio::{
     time::{Instant, interval},
 };
 use tokio_tungstenite::tungstenite::Message;
-use tracing::{debug, info, warn};
+use tracing::{debug, info, trace, warn};
 
 use crate::{
     buffer::ReplayBuffer,
@@ -106,6 +106,13 @@ pub fn build_hello() -> Hello {
 
 /// Long-running driver. Returns only on terminal shutdown.
 pub async fn run(cfg: Arc<Config>, shutdown: tokio::sync::watch::Receiver<bool>) -> Result<()> {
+    info!(
+        url = %cfg.server_url,
+        heartbeat_interval_ms = cfg.heartbeat_interval_ms,
+        peer_view_interval_ms = cfg.peer_view_interval_ms,
+        buffer_max_bytes = cfg.buffer_max_bytes,
+        "connection::run entered (state=Connecting)"
+    );
     let buffer = Arc::new(Mutex::new(ReplayBuffer::new(cfg.buffer_max_bytes)));
     let dispatcher = Arc::new(Dispatcher::new(cfg.clone()));
 
@@ -114,35 +121,46 @@ pub async fn run(cfg: Arc<Config>, shutdown: tokio::sync::watch::Receiver<bool>)
 
     loop {
         if *shutdown.borrow() {
+            info!("connection::run: shutdown observed before session start — exiting");
             break;
         }
 
+        debug!(attempt, "spawning new session");
         let cfg2 = cfg.clone();
         let session = run_session(cfg2, buffer.clone(), dispatcher.clone(), shutdown.clone()).await;
         match session {
             Ok(()) => {
-                info!("session ended cleanly");
+                info!(attempt, "session ended cleanly — state=Connecting (next loop)");
                 attempt = 0;
             }
             Err(e) => {
                 attempt = attempt.saturating_add(1);
                 if is_dead(attempt) {
-                    warn!(attempt, error = %e, "session failed — server marked unreachable");
+                    warn!(
+                        attempt,
+                        error = %e,
+                        "session failed — state=Unreachable (collectors buffer to ring)"
+                    );
                 } else {
-                    warn!(attempt, error = %e, "session failed — reconnecting");
+                    warn!(attempt, error = %e, "session failed — state=Reconnecting");
                 }
             }
         }
 
         if *shutdown.borrow() {
+            info!("connection::run: shutdown observed after session — exiting");
             break;
         }
         let delay = backoff_delay_ms(attempt);
+        info!(attempt, delay_ms = delay, "backoff before next dial");
         tokio::select! {
             () = tokio::time::sleep(Duration::from_millis(delay)) => {}
-            _ = shutdown.changed() => {}
+            _ = shutdown.changed() => {
+                info!("shutdown received during backoff");
+            }
         }
     }
+    info!("connection::run exited (state=Stopped)");
     Ok(())
 }
 
@@ -152,13 +170,15 @@ async fn run_session(
     dispatcher: Arc<Dispatcher>,
     mut shutdown: tokio::sync::watch::Receiver<bool>,
 ) -> Result<()> {
-    debug!(url = %cfg.server_url, "dialing");
+    info!(url = %cfg.server_url, "state=Connecting · dialing");
     let mut ws = transport::connect(&cfg).await?;
+    info!("state=Authenticating · WS handshake done, sending hello");
 
     // Send hello.
     let hello = AgentMessage::Hello(build_hello());
     let hello_json = serde_json::to_string(&hello)?;
     ws.send(Message::Text(hello_json.into())).await?;
+    debug!("hello frame sent");
 
     // Drain replay buffer (if any).
     let pending = {
@@ -166,9 +186,12 @@ async fn run_session(
         let since = b.oldest_ts().unwrap_or_else(now_ms);
         let count = b.pending();
         if count > 0 {
+            info!(count, since, "state=Recovering · replay.start");
             let start_msg = AgentMessage::ReplayStart { since, count };
             let s = serde_json::to_string(&start_msg)?;
             ws.send(Message::Text(s.into())).await?;
+        } else {
+            debug!("no backlog to replay");
         }
         b.drain()
     };
@@ -182,8 +205,9 @@ async fn run_session(
         };
         let s = serde_json::to_string(&end_msg)?;
         ws.send(Message::Text(s.into())).await?;
+        info!(count = pending_len, "replay.end sent");
     }
-    info!(replayed = pending_len, "connected");
+    info!(replayed = pending_len, "state=Connected");
 
     // Outbound channel: dispatcher / collectors push AgentMessage frames here,
     // a dedicated task serialises + writes to ws.
@@ -203,27 +227,38 @@ async fn run_session(
             biased;
             _ = shutdown.changed() => {
                 if *shutdown.borrow() {
-                    info!("shutdown signaled");
+                    info!("state=Stopping · shutdown signaled");
                     break;
                 }
             }
             // Outbound writer.
             Some(msg) = out_rx.recv() => {
                 let s = serde_json::to_string(&msg)?;
+                trace!(bytes = s.len(), "outbound frame");
                 ws.send(Message::Text(s.into())).await?;
             }
             // Heartbeat tick.
             _ = hb_interval.tick() => {
                 let metrics = heartbeat.sample();
+                trace!(
+                    mem_used = metrics.mem_used_bytes,
+                    cpu = metrics.cpu_percent,
+                    uptime_secs = metrics.uptime_secs,
+                    "heartbeat tick"
+                );
                 let frame = AgentMessage::Heartbeat { ts: now_ms(), metrics: metrics.clone() };
-                // Push to buffer too, so it survives a future disconnect.
                 buffer.lock().await.push_heartbeat(now_ms(), metrics);
                 let s = serde_json::to_string(&frame)?;
                 if ws.send(Message::Text(s.into())).await.is_err() {
+                    warn!("heartbeat write failed — dropping session");
                     anyhow::bail!("heartbeat write failed");
                 }
-                // Watchdog: any inbound silence beyond dead threshold → drop.
                 if last_inbound.elapsed() > watchdog.dead_threshold() {
+                    warn!(
+                        silence = ?last_inbound.elapsed(),
+                        threshold = ?watchdog.dead_threshold(),
+                        "watchdog tripped — disconnecting"
+                    );
                     anyhow::bail!("no inbound for {:?}, disconnecting", watchdog.dead_threshold());
                 }
             }
@@ -233,9 +268,11 @@ async fn run_session(
                 let rpc = cfg.easytier_rpc;
                 let buf = buffer.clone();
                 let out = out_tx.clone();
+                trace!("peer_view tick — spawning collector");
                 tokio::spawn(async move {
                     match peer_view::collect(&cli, &rpc).await {
                         Ok(payload) => {
+                            trace!("peer_view collected; pushing event");
                             let event = AgentMessage::Event(crate::protocol::Event {
                                 kind: EventKind::PeerView,
                                 ts: now_ms(),
@@ -250,11 +287,15 @@ async fn run_session(
             }
             // Inbound frame.
             next = ws.next() => {
-                let Some(msg) = next else { break };
+                let Some(msg) = next else {
+                    info!("inbound stream ended (None)");
+                    break;
+                };
                 let frame = msg?;
                 last_inbound = Instant::now();
                 match frame {
                     Message::Text(t) => {
+                        trace!(bytes = t.len(), "inbound text frame");
                         let parsed: ServerMessage = match serde_json::from_str(&t) {
                             Ok(p) => p,
                             Err(e) => {
@@ -262,25 +303,46 @@ async fn run_session(
                                 continue;
                             }
                         };
+                        debug!(type_name = msg_type_name(&parsed), "dispatch inbound");
                         let go_on = dispatcher.handle(parsed, &out_tx).await?;
                         if !go_on {
-                            info!("dispatcher requested shutdown");
+                            info!("state=Stopping · dispatcher requested shutdown");
                             break;
                         }
                     }
-                    Message::Close(_) => {
-                        info!("server closed");
+                    Message::Close(c) => {
+                        info!(?c, "server closed connection");
                         break;
                     }
-                    Message::Ping(_) | Message::Pong(_) | Message::Frame(_) => {}
+                    Message::Ping(_) | Message::Pong(_) | Message::Frame(_) => {
+                        trace!("ping/pong/raw frame (auto-handled)");
+                    }
                     Message::Binary(_) => warn!("ignoring unexpected binary frame"),
                 }
             }
         }
     }
 
+    debug!("closing ws");
     transport::close(ws).await;
     Ok(())
+}
+
+fn msg_type_name(m: &ServerMessage) -> &'static str {
+    match m {
+        ServerMessage::HelloAck { .. } => "hello_ack",
+        ServerMessage::CliInvoke { .. } => "cli.invoke",
+        ServerMessage::ExecStart(_) => "exec.start",
+        ServerMessage::ExecSignal { .. } => "exec.signal",
+        ServerMessage::ExecStdin { .. } => "exec.stdin",
+        ServerMessage::FilePutStart(_) => "file.put.start",
+        ServerMessage::FilePutChunk { .. } => "file.put.chunk",
+        ServerMessage::FilePutEnd { .. } => "file.put.end",
+        ServerMessage::FileGetStart(_) => "file.get.start",
+        ServerMessage::FileGetAckEnd { .. } => "file.get.ack_end",
+        ServerMessage::ReplayAck { .. } => "replay.ack",
+        ServerMessage::Shutdown { .. } => "shutdown",
+    }
 }
 
 #[cfg(test)]

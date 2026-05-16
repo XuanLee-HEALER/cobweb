@@ -64,6 +64,21 @@ pub struct Config {
     #[serde(default = "default_incoming_dir")]
     pub incoming_dir: PathBuf,
 
+    /// Directory for rotated log files (one per UTC day).
+    #[serde(default = "default_log_dir")]
+    pub log_dir: PathBuf,
+
+    /// Retention in days. Files older than this are deleted (no archive).
+    /// 0 disables purging entirely (keep forever).
+    #[serde(default = "default_log_max_age_days")]
+    pub log_max_age_days: u32,
+
+    /// When true, also tee log output to stderr (useful in foreground / dev).
+    /// Daemons leave this off — systemd / launchd / Windows service still
+    /// capture stdout/stderr separately if they need it.
+    #[serde(default)]
+    pub log_also_stderr: bool,
+
     /// Total ring-buffer byte budget across all event types.
     #[serde(default = "default_buffer_bytes")]
     pub buffer_max_bytes: u64,
@@ -111,6 +126,20 @@ fn default_incoming_dir() -> PathBuf {
     }
 }
 
+fn default_log_dir() -> PathBuf {
+    if cfg!(windows) {
+        let pd = std::env::var_os("ProgramData")
+            .map_or_else(|| PathBuf::from(r"C:\ProgramData"), PathBuf::from);
+        pd.join("cobweb-agent").join("logs")
+    } else {
+        PathBuf::from("/var/log/cobweb-agent")
+    }
+}
+
+const fn default_log_max_age_days() -> u32 {
+    7
+}
+
 fn default_server_url() -> String {
     "wss://10.177.0.1:8088/agent/ws".into()
 }
@@ -127,6 +156,9 @@ impl Default for Config {
             easytier_cli: default_easytier_cli(),
             easytier_rpc: default_easytier_rpc(),
             incoming_dir: default_incoming_dir(),
+            log_dir: default_log_dir(),
+            log_max_age_days: default_log_max_age_days(),
+            log_also_stderr: false,
             buffer_max_bytes: default_buffer_bytes(),
             trust_ca_path: None,
         }
@@ -152,6 +184,14 @@ pub struct Cli {
     /// Override server cert SHA-256 fingerprint (hex).
     #[arg(long, env = "COBWEB_AGENT_CERT_FINGERPRINT")]
     pub cert_fingerprint: Option<String>,
+
+    /// Override `log_dir`.
+    #[arg(long, env = "COBWEB_AGENT_LOG_DIR")]
+    pub log_dir: Option<PathBuf>,
+
+    /// Also tee tracing output to stderr.
+    #[arg(long, env = "COBWEB_AGENT_LOG_ALSO_STDERR")]
+    pub log_also_stderr: bool,
 }
 
 impl Cli {
@@ -192,6 +232,12 @@ impl Cli {
         }
         if let Some(v) = self.cert_fingerprint {
             cfg.server_cert_fingerprint = v;
+        }
+        if let Some(v) = self.log_dir {
+            cfg.log_dir = v;
+        }
+        if self.log_also_stderr {
+            cfg.log_also_stderr = true;
         }
         Ok(cfg)
     }
@@ -247,6 +293,8 @@ mod tests {
             server_url: Some("wss://override/agent/ws".into()),
             log_level: Some("debug".into()),
             cert_fingerprint: None,
+            log_dir: None,
+            log_also_stderr: false,
         };
         let cfg = cli.into_config().unwrap();
         assert_eq!(cfg.server_url, "wss://override/agent/ws");

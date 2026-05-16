@@ -1,0 +1,14 @@
+#!/bin/sh
+# cobweb pre-commit hook
+# Runs lint + format check across the WHOLE repository (not just staged
+# files) so partial commits can't leave the tree in an inconsistent state.
+# Bypass with `git commit --no-verify` only when truly necessary.
+#
+# `biome check` covers both lint and formatting in one pass — if you hit a
+# failure here, run `just lint-fix` (auto-fix + format-write) and retry.
+
+set -e
+
+echo "→ pre-commit · biome check (lint + format)"
+just lint
+echo "✓ pre-commit ok"
