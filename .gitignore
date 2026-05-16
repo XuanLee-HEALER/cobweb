@@ -3,6 +3,9 @@ node_modules/
 dist/
 .vite/
 *.tsbuildinfo
+# rust agent build artefacts (Cargo.lock IS committed for binary crates)
+target/
+**/*.rs.bk
 
 # local secrets (cobweb-managed)
 .secrets/

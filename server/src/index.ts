@@ -1,5 +1,5 @@
 // cobweb backend — Hono RPC over Bun.
-// Run: bun server.ts (production) or `vite dev` proxied to this (development).
+// Run: bun src/index.ts (or via root justfile `just serve` / `just dev`).
 
 import { createHash } from "node:crypto";
 import { EventEmitter } from "node:events";
@@ -23,10 +23,14 @@ const HOST = process.env.HOST ?? "127.0.0.1";
 const CLI = process.env.ET_CLI ?? defaultCliPath();
 const SAMPLE_INTERVAL_MS = Number(process.env.SAMPLE_INTERVAL_MS ?? 5000);
 const HISTORY_LEN = Number(process.env.HISTORY_LEN ?? 720);
-const ROOT = import.meta.dir;
-const DIST = join(ROOT, "dist");
-const NODES_FILE = join(ROOT, "nodes.json");
-const KEY_PATH = join(ROOT, "etmesh-id_ed25519");
+// import.meta.dir is server/src/. Anchor runtime paths to the repo root so
+// nodes.json / ed25519 keys / dashboard/dist resolve consistently no matter
+// where `bun start` is invoked from.
+const SERVER_SRC = import.meta.dir;
+const REPO_ROOT = join(SERVER_SRC, "..", "..");
+const DIST = join(REPO_ROOT, "dashboard", "dist");
+const NODES_FILE = join(REPO_ROOT, "nodes.json");
+const KEY_PATH = join(REPO_ROOT, "etmesh-id_ed25519");
 const KEY_PUB_PATH = `${KEY_PATH}.pub`;
 const REMOTE_KEY_NAME = "etmesh-id_ed25519";
 const FENCE_BEGIN = "# etmesh BEGIN (managed by dashboard, do not edit)";
@@ -43,7 +47,7 @@ const DNS_EXPECTED_IP = process.env.DNS_EXPECTED_IP ?? "10.177.0.6";
 const DNS_NRPT_TAG = "etmesh-managed";
 
 // Trust CA distribution (cluster root CA → every node's trust store)
-const CA_CACHE_PATH = join(ROOT, "etmesh-ca.crt");
+const CA_CACHE_PATH = join(REPO_ROOT, "etmesh-ca.crt");
 const CA_REMOTE_NODE = process.env.CA_REMOTE_NODE ?? "archmbp";
 const CA_KUBECTL_CMD =
   process.env.CA_KUBECTL_CMD ??

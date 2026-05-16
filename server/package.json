@@ -1,0 +1,18 @@
+{
+  "name": "@cobweb/server",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "description": "cobweb backend (Bun + Hono RPC)",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "dev": "bun --watch src/index.ts",
+    "start": "bun src/index.ts",
+    "check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "hono": "^4.12.18"
+  }
+}

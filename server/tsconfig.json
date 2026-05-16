@@ -1,0 +1,10 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    // workspace hoists @types/bun to root node_modules; help tsc walk up.
+    "typeRoots": ["./node_modules/@types", "../node_modules/@types"],
+    "types": ["bun"]
+  },
+  "include": ["src/**/*"]
+}

@@ -129,7 +129,7 @@ export const CAPABILITIES: Capability[] = [
 
 // Task result types live on the backend; re-export so consumers can import
 // from a single module.
-export type { CellKind, TaskResult, TaskRow } from "../../../server";
+export type { CellKind, TaskResult, TaskRow } from "@cobweb/server";
 
 // ─── Quality classifiers (pure functions) ─────────────────────────────
 

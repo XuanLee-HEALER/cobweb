@@ -1,10 +1,10 @@
 // Reactive distribute-task state. Populated on demand by the ComposeView
 // "Execute" button and synced with /api/tasks on init.
 
-import type { TaskResult } from "../../../server";
+import type { TaskResult } from "@cobweb/server";
 import { api } from "../api/client";
 
-export type { CellKind, TaskRow } from "../../../server";
+export type { CellKind, TaskRow } from "@cobweb/server";
 export type { TaskResult };
 
 export const tasks = $state({

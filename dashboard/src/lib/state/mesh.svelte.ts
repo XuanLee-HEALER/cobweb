@@ -4,7 +4,7 @@
 // Replaces the old static NODES mock — components read directly from
 // `mesh.nodes` / `mesh.latency` and get re-renders for free.
 
-import type { PeerCenterEntry } from "../../../server";
+import type { PeerCenterEntry } from "@cobweb/server";
 
 // ─── Types ────────────────────────────────────────────────────────────
 
