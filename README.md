@@ -15,15 +15,20 @@ the agent. Top-level `justfile` dispatches everything.
 ```sh
 just install      # bun install + cargo fetch
 just hooks        # one-time: install pre-push git hook
-just dev          # dashboard vite dev (http://localhost:5173)
-just serve        # backend (port 8088; needs easytier-cli + optional nodes.json)
+just dev          # full stack: dashboard (5173) + server (8088) in parallel
 just check        # lint + typecheck (what pre-push runs) — JS only
 just check-all    # check + cargo clippy + cargo test (slower)
 just --list       # see all recipes
 ```
 
-For a real local stack: run `just serve` in one terminal and `just dev` in
-another. The dev server proxies `/api/*` and `/api/stream` to the backend.
+`just dev` runs both workspaces' `dev` scripts via
+`bun run --filter '*' --parallel`, so dashboard vite and `bun --watch server`
+share the same terminal with Foreman-style prefixed output (`@cobweb/server:dev`
+and `@cobweb/dashboard:dev`). Ctrl+C kills both. If you want them apart, use
+`just dev-front` and `just dev-back` in separate terminals.
+
+`just serve` runs the backend non-watching (production-shaped invocation) —
+use it after `just build` to test the built dist alongside the API.
 
 ## Layout
 

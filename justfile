@@ -11,10 +11,18 @@ install:
     bun install
     cargo fetch --manifest-path agent/Cargo.toml
 
-# ── dashboard ───────────────────────────────────────────────
+# ── full stack ──────────────────────────────────────────────
 
-# dashboard vite dev server (http://localhost:5173)
+# dashboard vite dev (port 5173) + server with --watch (port 8088) in
+# parallel; bun --filter '*' --parallel runs the "dev" script of every
+# workspace with Foreman-style prefixed output. Ctrl+C kills both.
 dev:
+    bun run --filter '*' --parallel dev
+
+# ── dashboard only ──────────────────────────────────────────
+
+# dashboard vite dev server alone (http://localhost:5173)
+dev-front:
     bun run --cwd dashboard dev
 
 # build dashboard (output: dashboard/dist/)
@@ -25,14 +33,14 @@ build:
 preview:
     bun run --cwd dashboard preview
 
-# ── server ──────────────────────────────────────────────────
+# ── server only ─────────────────────────────────────────────
 
 # run the backend (requires easytier-cli + optional nodes.json)
 serve:
     bun run --cwd server start
 
 # server with --watch reload (re-runs on file change)
-serve-watch:
+dev-back:
     bun run --cwd server dev
 
 # ── agent (rust) ────────────────────────────────────────────
