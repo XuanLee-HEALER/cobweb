@@ -40,18 +40,10 @@
       "recommended": true,
       "style": {
         "noNonNullAssertion": "off",
-        "useImportType": "off",
-        "useTemplate": "off"
+        "useImportType": "warn"
       },
       "suspicious": {
-        "noExplicitAny": "off",
-        "noAssignInExpressions": "off"
-      },
-      "correctness": {
-        "useExhaustiveDependencies": "off"
-      },
-      "complexity": {
-        "noForEach": "off"
+        "noExplicitAny": "off"
       }
     }
   },
