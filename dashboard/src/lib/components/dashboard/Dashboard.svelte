@@ -113,7 +113,11 @@
         {cellSize}
         {colH}
         selectedId={ui.selectedNodeId} />
-      <Legend metric={ui.metric} />
+      <!-- block wrapper forces the inline-flex legend onto its own line,
+           so it sits beneath the matrix even when the matrix is narrow. -->
+      <div class="legend-wrap">
+        <Legend metric={ui.metric} />
+      </div>
     </div>
     {#if sidePanel && selectedNode}
       {#if ui.panelCollapsed}
