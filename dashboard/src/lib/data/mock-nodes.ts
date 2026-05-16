@@ -87,10 +87,10 @@ export const CAPABILITIES: Capability[] = [
   },
   {
     id: "agent",
-    name: "Agent 安装 / 升级 / 卸载",
-    tag: "wip",
+    name: "Agent 安装 / 升级",
+    tag: "boot",
     desc: "SSH 通道推送 Rust agent 二进制,注册为系统服务",
-    group: "future",
+    group: "active",
     channel: "ssh",
   },
   {

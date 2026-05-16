@@ -1,6 +1,7 @@
 // Environment-driven config + path constants. Anchored to the repo root via
 // import.meta.dir so paths resolve identically regardless of where bun starts.
 
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 function defaultCliPath(): string {
@@ -45,6 +46,31 @@ export const DNS_DOMAIN = process.env.DNS_DOMAIN ?? "lan";
 export const DNS_TEST_HOST = process.env.DNS_TEST_HOST ?? "archmbp.lan";
 export const DNS_EXPECTED_IP = process.env.DNS_EXPECTED_IP ?? "10.177.0.6";
 export const DNS_NRPT_TAG = "etmesh-managed";
+
+// ── WSS for agent + dashboard (impl-plan §3.4) ─────────────────────────
+//
+// Both endpoints share the same Bun.serve, so they share TLS material. The
+// agent verifies the peer cert pin (see impl-plan §3.2); the dashboard uses
+// the normal CA chain check.
+
+export const SERVER_CERT_PATH = process.env.SERVER_CERT_PATH ?? "";
+export const SERVER_KEY_PATH = process.env.SERVER_KEY_PATH ?? "";
+
+/** Returns the Bun TLS option object, or `undefined` when running plaintext.
+ *  Plaintext is fine in dev — production should always set both env vars. */
+export function loadTlsCertificate(): { cert: string; key: string } | undefined {
+  if (!SERVER_CERT_PATH || !SERVER_KEY_PATH) return undefined;
+  if (!existsSync(SERVER_CERT_PATH) || !existsSync(SERVER_KEY_PATH)) {
+    console.warn(
+      `TLS env set but file missing — falling back to plaintext (cert=${SERVER_CERT_PATH}, key=${SERVER_KEY_PATH})`,
+    );
+    return undefined;
+  }
+  return {
+    cert: readFileSync(SERVER_CERT_PATH, "utf8"),
+    key: readFileSync(SERVER_KEY_PATH, "utf8"),
+  };
+}
 
 // ── Trust CA distribution ──────────────────────────────────────────────
 

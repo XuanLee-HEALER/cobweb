@@ -35,6 +35,7 @@
     if (capId === 'ca' && taskName.startsWith('CA ')) return true;
     if (capId === 'dns' && taskName.startsWith('DNS ')) return true;
     if (capId === 'ssh' && taskName.startsWith('SSH key')) return true;
+    if (capId === 'agent' && taskName.startsWith('cobweb-agent')) return true;
     return false;
   }
 
@@ -83,7 +84,7 @@
     ui.distView = 'result';
     if (dryRun) return; // dry-run currently no-op; future: POST with dryRun flag
     const id = cap.id;
-    if (id === 'ca' || id === 'dns' || id === 'ssh') {
+    if (id === 'ca' || id === 'dns' || id === 'ssh' || id === 'agent') {
       await runApply(id);
     }
     // Future caps don't have apply endpoints yet — the result view will show

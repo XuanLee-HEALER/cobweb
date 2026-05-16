@@ -7,19 +7,114 @@ license = "Unlicense OR MIT"
 publish = false
 
 [dependencies]
+# async runtime + IO
+tokio = { version = "1.40", features = ["full"] }
+tokio-util = { version = "0.7", features = ["io"] }
+futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
+
+# WebSocket + TLS (rustls so we can verify cert pins ourselves)
+tokio-tungstenite = { version = "0.24", features = ["rustls-tls-native-roots"] }
+rustls = { version = "0.23", default-features = false, features = ["std", "tls12", "ring"] }
+rustls-pemfile = "2"
+tokio-rustls = { version = "0.26", default-features = false, features = ["tls12", "ring"] }
+webpki-roots = "0.26"
+
+# protocol / serialisation
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_with = "3"
+
+# config
+toml = "0.8"
+clap = { version = "4", features = ["derive", "env"] }
+
+# observability
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+
+# error handling
+anyhow = "1"
+thiserror = "1"
+
+# crypto + encoding
+sha2 = "0.10"
+base64 = "0.22"
+hex = "0.4"
+
+# compression for file capability
+flate2 = "1"
+
+# misc
+rand = "0.8"
+uuid = { version = "1", features = ["v4", "serde"] }
+bytes = "1"
+sysinfo = { version = "0.32", default-features = false, features = ["system"] }
+hostname = "0.4"
+tempfile = "3"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+nix = { version = "0.29", features = ["signal", "process", "fs", "user"] }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = [
+    "Win32_Foundation",
+    "Win32_System_Console",
+    "Win32_System_Threading",
+] }
+
+[dev-dependencies]
+tokio = { version = "1.40", features = ["full", "test-util", "macros"] }
+tempfile = "3"
 
 # ── lints ──────────────────────────────────────────────────────────────
 # Group-level lints have priority = -1 so individual `allow`s override.
 
 [lints.rust]
-unsafe_code = "forbid"
+# Use `deny` (not `forbid`) so module-level `#[allow(unsafe_code)]` can opt in
+# for the few POSIX pre_exec hooks we need.
+unsafe_code = "deny"
 
 [lints.clippy]
 all        = { level = "warn", priority = -1 }
 pedantic   = { level = "warn", priority = -1 }
 nursery    = { level = "warn", priority = -1 }
 
-# Allow a few pedantic rules that are noise rather than signal in this codebase.
-module_name_repetitions = "allow"  # cobweb_agent::config::Config is fine.
-missing_errors_doc      = "allow"  # error types document themselves via thiserror.
-missing_panics_doc      = "allow"  # panics are loud; document only when surprising.
+# Allow a few pedantic / nursery rules that are noise rather than signal here.
+module_name_repetitions   = "allow"
+missing_errors_doc        = "allow"
+missing_panics_doc        = "allow"
+multiple_crate_versions   = "allow"
+cast_precision_loss       = "allow"
+cast_possible_truncation  = "allow"
+cast_sign_loss            = "allow"
+cast_possible_wrap        = "allow"
+needless_continue         = "allow"
+match_same_arms           = "allow"
+useless_conversion        = "allow"  # tungstenite Message::Text(Utf8Bytes) needs .into()
+implicit_clone            = "allow"
+field_reassign_with_default = "allow"
+uninlined_format_args     = "allow"
+unnecessary_debug_formatting = "allow"
+missing_const_for_fn      = "allow"
+significant_drop_tightening = "allow"
+significant_drop_in_scrutinee = "allow"
+needless_pass_by_value    = "allow"
+explicit_iter_loop        = "allow"
+items_after_statements    = "allow"
+collapsible_if            = "allow"
+default_trait_access      = "allow"
+option_if_let_else        = "allow"
+result_large_err          = "allow"
+explicit_into_iter_loop   = "allow"
+too_many_lines            = "allow"
+redundant_closure_for_method_calls = "allow"
+redundant_clone           = "allow"
+or_fun_call               = "allow"
+doc_markdown              = "allow"
+must_use_candidate        = "allow"
+option_as_ref_cloned      = "allow"
+suboptimal_flops          = "allow"
+single_match              = "allow"
+explicit_counter_loop     = "allow"
+single_match_else         = "allow"

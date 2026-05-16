@@ -5,17 +5,12 @@ import { existsSync, statSync } from "node:fs";
 import { join, normalize } from "node:path";
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
+import { agentInstallApply } from "./agent-install";
+import { agents } from "./agent-registry";
 import { caApply, caStatus } from "./ca";
 import { DIST, DNS_DOMAIN, mimeFor } from "./config";
 import { dnsApply, dnsStatus } from "./dns";
-import {
-  type AgentInfo,
-  cli,
-  type NodeInfo,
-  type PeerCenterEntry,
-  type PeerRaw,
-  type StatRaw,
-} from "./easytier";
+import { cli, type NodeInfo, type PeerCenterEntry, type PeerRaw, type StatRaw } from "./easytier";
 import { loadNodes, meshApply, meshInitKeys, meshStatus } from "./mesh";
 import { events, latestPeerCenter, type Sample, samples } from "./sampler";
 import { applyLogsToTaskResult, tasks } from "./tasks";
@@ -67,6 +62,12 @@ const app = new Hono()
     const { logs } = await dnsApply();
     return c.json(applyLogsToTaskResult(`DNS 设置 · ${DNS_DOMAIN}`, logs, t));
   })
+  .post("/api/mesh/agent/install", async (c) => {
+    const t = Date.now();
+    const body = (await c.req.json().catch(() => null)) as { onlyNodes?: string[] } | null;
+    const { logs } = await agentInstallApply(body ?? {});
+    return c.json(applyLogsToTaskResult(`cobweb-agent · 安装 / 升级`, logs, t));
+  })
   .get("/api/mesh/ca/status", async (c) => c.json(await caStatus()))
   .post("/api/mesh/ca/apply", async (c) => {
     const t = Date.now();
@@ -83,8 +84,27 @@ const app = new Hono()
     return c.json(t);
   })
 
-  // ── agent placeholder (no agent infrastructure yet) ────────────
-  .get("/api/agents", (c) => c.json([] as AgentInfo[]))
+  // ── cobweb-agent registry (live + recently offline) ────────────
+  .get("/api/agents", (c) => c.json(agents.list()))
+  .post("/api/agents/:peerId/cli", async (c) => {
+    const peerId = c.req.param("peerId");
+    const body = (await c.req.json().catch(() => null)) as {
+      args?: string[];
+      request_id?: string;
+    } | null;
+    if (!body || !Array.isArray(body.args)) {
+      return c.json({ error: "expected { args: string[] }" }, 400);
+    }
+    const requestId = body.request_id ?? crypto.randomUUID();
+    const ok = agents.send(peerId, {
+      type: "cli.invoke",
+      request_id: requestId,
+      args: body.args,
+      json_output: true,
+    });
+    if (!ok) return c.json({ error: "agent offline" }, 404);
+    return c.json({ ok: true, request_id: requestId });
+  })
 
   // ── SSE: pushes peer-center + samples whenever they refresh ────
   .get("/api/stream", (c) =>

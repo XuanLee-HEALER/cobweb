@@ -1,0 +1,35 @@
+[Unit]
+Description=cobweb agent (mesh management daemon)
+Documentation=https://github.com/XuanLee-HEALER/cobweb
+After=network-online.target easytier-core.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/cobweb-agent
+EnvironmentFile=-/etc/cobweb-agent/env
+Restart=on-failure
+RestartSec=5
+# Cap restart attempts so a panic loop doesn't burn cycles
+StartLimitBurst=10
+StartLimitIntervalSec=120
+
+# Run as root — exec / file / pty need it (see design.md §9)
+User=root
+Group=root
+
+# Logging — let journalctl capture stdout/stderr
+StandardOutput=journal
+StandardError=journal
+
+# Hardening — the agent does need to spawn things and read system state,
+# so most sandboxing must be relaxed. These are still safe defaults.
+NoNewPrivileges=false
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+ProtectSystem=false
+ProtectHome=false
+
+[Install]
+WantedBy=multi-user.target

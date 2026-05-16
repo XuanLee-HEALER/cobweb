@@ -39,10 +39,11 @@ function capIdFromTaskName(name: string): string | null {
   if (name.startsWith("CA ")) return "ca";
   if (name.startsWith("DNS ")) return "dns";
   if (name.startsWith("SSH key")) return "ssh";
+  if (name.startsWith("cobweb-agent")) return "agent";
   return null;
 }
 
-type Endpoint = "ca" | "dns" | "ssh";
+type Endpoint = "ca" | "dns" | "ssh" | "agent";
 
 /** Run an apply and store the resulting TaskResult into state. */
 export async function runApply(cap: Endpoint): Promise<TaskResult | null> {
@@ -53,7 +54,9 @@ export async function runApply(cap: Endpoint): Promise<TaskResult | null> {
         ? await api.api.mesh.ca.apply.$post()
         : cap === "dns"
           ? await api.api.mesh.dns.apply.$post()
-          : await api.api.mesh.apply.$post(); // ssh = /api/mesh/apply
+          : cap === "agent"
+            ? await api.api.mesh.agent.install.$post({ json: {} })
+            : await api.api.mesh.apply.$post(); // ssh = /api/mesh/apply
     if (!r.ok) {
       const err = await r.text();
       console.warn(`apply ${cap} failed:`, err);
