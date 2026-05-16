@@ -1,0 +1,25 @@
+[package]
+name = "cobweb-agent"
+version = "0.1.0"
+edition = "2024"
+description = "Node-side daemon for cobweb mesh management (WebSocket over EasyTier mesh)."
+license = "Unlicense OR MIT"
+publish = false
+
+[dependencies]
+
+# ── lints ──────────────────────────────────────────────────────────────
+# Group-level lints have priority = -1 so individual `allow`s override.
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all        = { level = "warn", priority = -1 }
+pedantic   = { level = "warn", priority = -1 }
+nursery    = { level = "warn", priority = -1 }
+
+# Allow a few pedantic rules that are noise rather than signal in this codebase.
+module_name_repetitions = "allow"  # cobweb_agent::config::Config is fine.
+missing_errors_doc      = "allow"  # error types document themselves via thiserror.
+missing_panics_doc      = "allow"  # panics are loud; document only when surprising.

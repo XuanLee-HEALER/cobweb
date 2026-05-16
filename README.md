@@ -1,36 +1,51 @@
 # cobweb
 
-EasyTier private mesh management dashboard. Bun + Hono + Svelte 5 + a Rust agent
-(planned), surfaced as a single dense dashboard for monitoring, distribution of
-config / files / commands across the mesh.
+EasyTier private mesh management dashboard. Dense, single-user, three packages
+in one repo:
 
-## Status
+- **`dashboard/`** — Svelte 5 + Vite frontend
+- **`server/`**    — Bun + Hono backend with typed RPC + SSE
+- **`agent/`**     — Rust daemon (scaffold; protocol in [`docs/agent-design.md`](docs/agent-design.md))
 
-UI prototype + design system imported; backend is the original `Bun.serve` from
-the previous iteration awaiting the Hono RPC rewrite. See [`docs/`](docs/).
+Workspace orchestration via Bun workspaces for the JS packages; Cargo handles
+the agent. Top-level `justfile` dispatches everything.
 
 ## Quick start
 
 ```sh
-just install      # bun install
-just dev          # vite dev (localhost:5173)
-just serve        # run the backend (needs easytier-cli + nodes.json)
-just check        # lint + svelte-check (what pre-push runs)
+just install      # bun install + cargo fetch
+just hooks        # one-time: install pre-push git hook
+just dev          # dashboard vite dev (http://localhost:5173)
+just serve        # backend (port 8088; needs easytier-cli + optional nodes.json)
+just check        # lint + typecheck (what pre-push runs) — JS only
+just check-all    # check + cargo clippy + cargo test (slower)
 just --list       # see all recipes
 ```
 
-After cloning, install the git hook once:
+For a real local stack: run `just serve` in one terminal and `just dev` in
+another. The dev server proxies `/api/*` and `/api/stream` to the backend.
 
-```sh
-just hooks        # copies scripts/hooks/pre-push into .git/hooks/
+## Layout
+
+```
+cobweb/
+├── package.json              workspaces declaration
+├── tsconfig.base.json        shared TS compiler options
+├── biome.json                lint + format (JS/TS/JSON, repo-wide)
+├── justfile                  top-level task runner
+├── docs/                     architecture + design briefs
+├── scripts/                  git hooks installer
+├── dashboard/                @cobweb/dashboard (svelte 5 + vite)
+├── server/                   @cobweb/server (bun + hono)
+└── agent/                    cobweb-agent (rust, edition 2024)
 ```
 
 ## Documents
 
-- [`docs/tech-stack.md`](docs/tech-stack.md) — Hono + Hono RPC + Svelte SPA + SSE
-- [`docs/design-brief.md`](docs/design-brief.md) — UI design prompt for Claude Design
+- [`docs/tech-stack.md`](docs/tech-stack.md) — Hono RPC + Svelte SPA + SSE
+- [`docs/design-brief.md`](docs/design-brief.md) — UI design prompt
 - [`docs/easytier-research.md`](docs/easytier-research.md) — EasyTier CLI capability survey
-- [`docs/agent-design.md`](docs/agent-design.md) — Rust agent (capabilities, protocol, bootstrap)
+- [`docs/agent-design.md`](docs/agent-design.md) — Rust agent protocol + capabilities
 
 ## License
 

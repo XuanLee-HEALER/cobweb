@@ -70,8 +70,11 @@ typecheck-server:
 
 typecheck: typecheck-dashboard typecheck-server
 
-# what pre-push runs
+# what pre-push runs (fast — JS only; agent excluded to keep push snappy)
 check: lint typecheck
+
+# everything (slower; pulls in cargo clippy + tests)
+check-all: check agent-check
 
 # install git hooks (run after clone)
 hooks:
