@@ -10,6 +10,11 @@
 #     dashboard/dist/                (vite build output, static)
 #     agents/{linux-x86_64,windows-x86_64,macos-aarch64}/cobweb-agent[.exe]
 #     nodes.json, etmesh-ca.crt, etmesh-id_ed25519(.pub)   ← runtime data, NOT touched by CI
+#
+# Path-based change detection (dorny/paths-filter) skips any build whose
+# inputs didn't change. The deploy job runs unless every build was skipped,
+# and only rsyncs the subtrees whose builds actually produced artifacts —
+# the rest keep last deploy's binaries.
 
 name: deploy
 
@@ -23,17 +28,48 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # ── change detection ─────────────────────────────────────────────────
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      dashboard: ${{ steps.f.outputs.dashboard }}
+      server: ${{ steps.f.outputs.server }}
+      agent: ${{ steps.f.outputs.agent }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dorny/paths-filter@v3
+        id: f
+        with:
+          filters: |
+            dashboard:
+              - 'dashboard/**'
+              - 'package.json'
+              - 'bun.lock'
+              - 'tsconfig.base.json'
+              - '.github/workflows/deploy.yml'
+            server:
+              - 'server/**'
+              - 'package.json'
+              - 'bun.lock'
+              - 'tsconfig.base.json'
+              - '.github/workflows/deploy.yml'
+            agent:
+              - 'agent/**'
+              - '.github/workflows/deploy.yml'
+
   # ── dashboard (vite build → static dist/) ────────────────────────────
   build-dashboard:
+    needs: changes
+    if: needs.changes.outputs.dashboard == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
       - run: bun install --frozen-lockfile
       - run: bun run --cwd dashboard build
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: dashboard-dist
           path: dashboard/dist/
@@ -42,9 +78,11 @@ jobs:
 
   # ── server (bun bundle, no runtime) ──────────────────────────────────
   build-server:
+    needs: changes
+    if: needs.changes.outputs.server == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
@@ -56,7 +94,7 @@ jobs:
             --target=bun \
             --outfile=server/dist/server.js
           ls -la server/dist/
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: server-bundle
           path: server/dist/server.js
@@ -65,6 +103,8 @@ jobs:
 
   # ── agent (rust, three OS targets in parallel) ───────────────────────
   build-agent:
+    needs: changes
+    if: needs.changes.outputs.agent == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -80,7 +120,7 @@ jobs:
             bin: cobweb-agent
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
@@ -88,7 +128,7 @@ jobs:
       - name: build
         working-directory: agent
         run: cargo build --release --bin cobweb-agent
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: agent-${{ matrix.artifact }}
           path: agent/target/release/${{ matrix.bin }}
@@ -97,30 +137,62 @@ jobs:
 
   # ── deploy (rsync to ECS + restart unit) ─────────────────────────────
   deploy:
-    needs: [build-dashboard, build-server, build-agent]
+    needs: [changes, build-dashboard, build-server, build-agent]
+    # Run when at least one subtree changed AND none of the builds it
+    # actually attempted failed. `always()` lets us see skipped jobs as
+    # neutral (skipped + success both green-light deploy).
+    if: |
+      always() &&
+      (needs.changes.outputs.dashboard == 'true' || needs.changes.outputs.server == 'true' || needs.changes.outputs.agent == 'true') &&
+      (needs.build-dashboard.result == 'success' || needs.build-dashboard.result == 'skipped') &&
+      (needs.build-server.result == 'success' || needs.build-server.result == 'skipped') &&
+      (needs.build-agent.result == 'success' || needs.build-agent.result == 'skipped')
     runs-on: ubuntu-latest
     steps:
       - name: download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           path: artifacts/
+        # If everything was skipped (no artifacts to download), this just
+        # creates an empty artifacts/ — the rsync steps below detect that
+        # and noop.
 
       - name: lay out release tree
         run: |
           set -e
-          mkdir -p release/server/dist release/dashboard release/agents/{linux-x86_64,windows-x86_64,macos-aarch64}
+          mkdir -p release
 
-          mv artifacts/dashboard-dist  release/dashboard/dist
-          mv artifacts/server-bundle/server.js  release/server/dist/server.js
+          if [ -d artifacts/dashboard-dist ]; then
+            mkdir -p release/dashboard
+            mv artifacts/dashboard-dist release/dashboard/dist
+            echo "::notice::dashboard built — will deploy"
+          else
+            echo "::notice::dashboard unchanged — skip"
+          fi
 
-          mv artifacts/agent-linux-x86_64/cobweb-agent          release/agents/linux-x86_64/cobweb-agent
-          mv artifacts/agent-windows-x86_64/cobweb-agent.exe    release/agents/windows-x86_64/cobweb-agent.exe
-          mv artifacts/agent-macos-aarch64/cobweb-agent         release/agents/macos-aarch64/cobweb-agent
+          if [ -d artifacts/server-bundle ]; then
+            mkdir -p release/server/dist
+            mv artifacts/server-bundle/server.js release/server/dist/server.js
+            echo "::notice::server built — will deploy"
+          else
+            echo "::notice::server unchanged — skip"
+          fi
 
-          chmod +x release/agents/linux-x86_64/cobweb-agent release/agents/macos-aarch64/cobweb-agent
+          if [ -d artifacts/agent-linux-x86_64 ] && \
+             [ -d artifacts/agent-windows-x86_64 ] && \
+             [ -d artifacts/agent-macos-aarch64 ]; then
+            mkdir -p release/agents/{linux-x86_64,windows-x86_64,macos-aarch64}
+            mv artifacts/agent-linux-x86_64/cobweb-agent          release/agents/linux-x86_64/cobweb-agent
+            mv artifacts/agent-windows-x86_64/cobweb-agent.exe    release/agents/windows-x86_64/cobweb-agent.exe
+            mv artifacts/agent-macos-aarch64/cobweb-agent         release/agents/macos-aarch64/cobweb-agent
+            chmod +x release/agents/linux-x86_64/cobweb-agent release/agents/macos-aarch64/cobweb-agent
+            echo "::notice::agent built (3 platforms) — will deploy"
+          else
+            echo "::notice::agent unchanged — skip"
+          fi
 
           echo "--- release tree ---"
-          find release -maxdepth 3 -type f -printf '%P\n'
+          find release -maxdepth 3 -type f -printf '%P\n' 2>/dev/null || echo "(empty)"
 
       - name: install ssh key
         run: |
@@ -128,8 +200,6 @@ jobs:
           chmod 700 ~/.ssh
           echo "${{ secrets.ALIYUN_SSH_KEY }}" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
-          # StrictHostKeyChecking off in CI (deploy_key + IP authenticate the
-          # peer; the host fingerprint would have to be pinned separately).
           cat > ~/.ssh/config <<EOF
           Host cobweb
             HostName ${{ secrets.ALIYUN_HOST }}
@@ -143,23 +213,24 @@ jobs:
 
       - name: rsync release tree
         run: |
-          # --delete inside each subtree so removed files vanish, but the
-          # top-level /opt/cobweb is untouched — runtime data (nodes.json /
-          # etmesh-*) keeps living there.
-          rsync -avz --delete release/server/        cobweb:/opt/cobweb/server/
-          rsync -avz --delete release/dashboard/     cobweb:/opt/cobweb/dashboard/
-          rsync -avz --delete release/agents/        cobweb:/opt/cobweb/agents/
+          # Only rsync subtrees that were actually built this run. The ECS
+          # keeps the previous build for any subtree we didn't rebuild.
+          if [ -d release/dashboard ]; then
+            rsync -avz --delete release/dashboard/ cobweb:/opt/cobweb/dashboard/
+          fi
+          if [ -d release/server ]; then
+            rsync -avz --delete release/server/ cobweb:/opt/cobweb/server/
+          fi
+          if [ -d release/agents ]; then
+            rsync -avz --delete release/agents/ cobweb:/opt/cobweb/agents/
+          fi
 
-      - name: enable + restart cobweb-server
+      - name: restart cobweb-server
         run: |
-          # Enable on first deploy (idempotent), then bounce. The sudoers
-          # rule on the host permits only this exact unit.
           ssh cobweb 'sudo -n systemctl restart cobweb-server.service'
           sleep 2
           ssh cobweb 'sudo -n systemctl is-active cobweb-server.service'
 
       - name: smoke test
         run: |
-          # /api/agents is a no-side-effect read that exercises the new bundle.
-          # Hit it from the host (mesh IP isn't reachable from CI).
           ssh cobweb 'curl -fsS http://10.177.0.1:8088/api/agents | head -c 200 && echo'

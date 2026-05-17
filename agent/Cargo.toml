@@ -69,6 +69,16 @@ windows-sys = { version = "0.59", features = [
 tokio = { version = "1.40", features = ["full", "test-util", "macros"] }
 tempfile = "3"
 
+# Release profile tuned for CI build time. Skip LTO + raise codegen units so
+# more codegen happens in parallel — the agent is IO-bound (mostly tokio +
+# rustls), the residual perf win from full LTO doesn't justify another minute
+# per platform per build.
+[profile.release]
+codegen-units = 256
+lto = false
+opt-level = 3
+strip = "symbols"
+
 # ── lints ──────────────────────────────────────────────────────────────
 # Group-level lints have priority = -1 so individual `allow`s override.
 
