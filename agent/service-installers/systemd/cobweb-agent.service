@@ -6,6 +6,10 @@ Wants=network-online.target
 
 [Service]
 Type=simple
+# Default targeting the EasyTier hub. Override via EnvironmentFile if the
+# hub IP changes or you want a different log level.
+Environment="COBWEB_AGENT_SERVER_URL=wss://cobweb.lan:8088/agent/ws"
+Environment="COBWEB_AGENT_TRUST_CA=/etc/cobweb-agent/etmesh-ca.crt"
 ExecStart=/usr/local/bin/cobweb-agent
 EnvironmentFile=-/etc/cobweb-agent/env
 Restart=on-failure

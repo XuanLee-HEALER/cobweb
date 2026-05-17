@@ -95,14 +95,92 @@ Three trust boundaries (impl-plan §3):
 2. TLS chain is verified against an embedded CA.
 3. The server's leaf cert SHA-256 is pinned in the agent config — a CA compromise alone is not enough to MITM.
 
+## Deployment topology
+
+cobweb is **not a generic web service** — it has a hard placement requirement.
+
+### Where the server runs
+
+The cobweb server **must run on the EasyTier hub node** (the node that hosts
+the mesh's authoritative ipv4, typically `10.177.0.1`). Concretely:
+
+- `Bun.serve` binds `HOST` (default `10.177.0.1`), the mesh tun0 IP — public
+  eth0 sees nothing on port 8088.
+- The agent registry, `/api/agents` REST surface, and the `/agent/ws`
+  upgrade all live on that listener.
+- Mesh-internal DNS (CoreDNS) maps `cobweb.lan → 10.177.0.1` so the leaf
+  cert (CN=`cobweb.lan`, SAN includes IP `10.177.0.1`) validates for both
+  hostname and direct IP clients.
+- Dashboard users access via `https://cobweb.lan:8088` from any mesh-joined
+  machine (browser must trust `etmesh-ca`, distributed by the dashboard's
+  "CA 信任根分发" capability).
+
+Running on a non-hub node would defeat both the mesh-internal-only listener
+binding and the cert SAN — don't.
+
+### TLS opt-in (the server picks the protocol)
+
+The server inspects two env vars on boot:
+
+```sh
+SERVER_CERT_PATH=/etc/cobweb/tls/server.crt
+SERVER_KEY_PATH=/etc/cobweb/tls/server.key
+```
+
+- **Both files present + readable** → `Bun.serve` brings up TLS; the
+  endpoint becomes `https://…/` + `wss://…/agent/ws`.
+- **Either path missing or empty** → falls back to plaintext HTTP/WS,
+  with a console warning. Useful for `just dev` and CI smoke tests.
+
+Issuing / rotating the cert is done off-band against the mesh's private CA
+(`etmesh-ca`, a `ClusterIssuer` in archmbp's k8s cert-manager). Drop the
+new cert into `SERVER_CERT_PATH` and `sudo systemctl restart cobweb-server`
+— no unit change required.
+
+## CA trust on the agent side
+
+The agent's rustls TLS layer **only trusts the embedded public roots by
+default** — it does *not* read `/etc/ssl/certs` or any system trust store.
+A private CA like `etmesh-ca` therefore has to be handed to the agent
+explicitly:
+
+```sh
+# Recommended: env on the agent process
+COBWEB_AGENT_TRUST_CA=/etc/cobweb-agent/etmesh-ca.crt cobweb-agent
+# Or as a CLI flag
+cobweb-agent --trust-ca /etc/cobweb-agent/etmesh-ca.crt
+# Or via config.toml
+trust_ca_path = "/etc/cobweb-agent/etmesh-ca.crt"
+```
+
+The agent install flow (`POST /api/mesh/agent/install`, or the dashboard's
+"Agent 安装/升级" button) handles this end-to-end:
+
+1. sftp **`etmesh-ca.crt`** to the node alongside the agent binary
+2. install both into platform-specific paths
+   (`/etc/cobweb-agent/` on POSIX, `%ProgramData%\cobweb-agent\` on Windows)
+3. register the service with `COBWEB_AGENT_TRUST_CA=<that path>` baked
+   into the systemd unit / launchd plist / Windows service env
+4. start the service — first WSS handshake passes because the chain
+   `cobweb.lan` ← `etmesh-root-ca` now resolves against a known root
+
+Cert pinning (`--cert-fingerprint`) is an independent second layer on top
+of the CA chain; even if the CA private key leaked, an attacker still
+needs to match the pinned leaf-cert SHA-256 to MITM.
+
 ## Running the agent
 
-Production: the systemd unit (or launchd plist / Windows service) starts the agent as root / SYSTEM. See [`agent/service-installers/`](agent/service-installers/) for templates and `README.md` in that folder.
+Production: the systemd unit (or launchd plist / Windows service) starts
+the agent as root / SYSTEM. See [`agent/service-installers/`](agent/service-installers/)
+for templates and `README.md` in that folder. When deployed via the
+dashboard "Agent 安装/升级" capability, `COBWEB_AGENT_TRUST_CA` is set
+automatically; templates for manual installs also pre-fill it.
 
 For ad-hoc / dev runs:
 
 ```sh
-COBWEB_AGENT_SERVER_URL=ws://127.0.0.1:8088/agent/ws \
+COBWEB_AGENT_SERVER_URL=wss://cobweb.lan:8088/agent/ws \
+COBWEB_AGENT_TRUST_CA=/path/to/etmesh-ca.crt \
 COBWEB_AGENT_LOG_DIR=./logs \
 COBWEB_AGENT_LOG_LEVEL=debug \
 ./agent/target/debug/cobweb-agent --log-also-stderr
@@ -115,24 +193,12 @@ Config knobs (CLI flag, env var, or `config.toml` key — all three are layered,
 | `--server-url`      | `COBWEB_AGENT_SERVER_URL`             | `wss://10.177.0.1:8088/agent/ws`                                |
 | `--log-level`       | `COBWEB_AGENT_LOG_LEVEL`              | `info`                                                          |
 | `--cert-fingerprint`| `COBWEB_AGENT_CERT_FINGERPRINT`       | (empty — disables pin; production should pin)                   |
+| `--trust-ca`        | `COBWEB_AGENT_TRUST_CA`               | (empty — webpki-roots only; private CA needs explicit path)     |
 | `--log-dir`         | `COBWEB_AGENT_LOG_DIR`                | `/var/log/cobweb-agent` or `%ProgramData%\cobweb-agent\logs`    |
 | `--log-also-stderr` | `COBWEB_AGENT_LOG_ALSO_STDERR`        | `false`                                                         |
 | `--config`          | `COBWEB_AGENT_CONFIG`                 | `/etc/cobweb-agent/config.toml`                                 |
 
 Logs roll daily into `<log_dir>/cobweb-agent.YYYY-MM-DD`; files older than `log_max_age_days` (default 7) are deleted on start and every 6 h thereafter — no archive directory.
-
-## Running the server with TLS
-
-Production mode (matches impl-plan §3.4):
-
-```sh
-SERVER_CERT_PATH=/etc/cobweb/server.crt \
-SERVER_KEY_PATH=/etc/cobweb/server.key \
-HOST=10.177.0.1 PORT=8088 \
-bun server/src/index.ts
-```
-
-If either path is missing the server falls back to plaintext (HTTP + WS), useful for local development. The `/agent/ws` upgrade lives on the same port as the dashboard HTTPS — one Bun.serve, one TLS material.
 
 ## Documents
 

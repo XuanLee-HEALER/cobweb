@@ -24,6 +24,7 @@
 [CmdletBinding()]
 param(
     [string]$Binary = ".\cobweb-agent.exe",
+    [string]$TrustCa = ".\etmesh-ca.crt",
     [string]$ConfigDir = (Join-Path $env:ProgramData "cobweb-agent"),
     [string]$InstallDir = (Join-Path $env:ProgramFiles "cobweb-agent")
 )
@@ -61,14 +62,25 @@ if ($svc) {
 Copy-Item -Path $Binary -Destination $Target -Force
 Write-Host "binary deployed to $Target"
 
+# Drop the private CA next to the config so the agent's rustls layer can
+# verify the cobweb server's etmesh-ca-signed cert.
+$CaTarget = Join-Path $ConfigDir "etmesh-ca.crt"
+if (Test-Path $TrustCa) {
+    Copy-Item -Path $TrustCa -Destination $CaTarget -Force
+    Write-Host "trust CA installed to $CaTarget"
+} elseif (-not (Test-Path $CaTarget)) {
+    Write-Warning "no -TrustCa file at $TrustCa and none already at $CaTarget — agent will fail UnknownIssuer until you drop the CA into $CaTarget"
+}
+
 # Seed a default config if one isn't there yet.
 $ConfigFile = Join-Path $ConfigDir "config.toml"
 if (-not (Test-Path $ConfigFile)) {
 @"
 # cobweb-agent config — edit and restart the service to apply.
-server_url            = "wss://10.177.0.1:8088/agent/ws"
+server_url            = "wss://cobweb.lan:8088/agent/ws"
 log_level             = "info"
 server_cert_fingerprint = ""
+trust_ca_path         = "$($CaTarget.Replace('\','\\'))"
 rate_limit_bps        = 10485760
 heartbeat_interval_ms = 10000
 peer_view_interval_ms = 5000
@@ -78,13 +90,19 @@ incoming_dir          = "$($IncomingDir.Replace('\','\\'))"
     Write-Host "seeded default config $ConfigFile"
 }
 
-# (Re)register the service.
+# (Re)register the service. We bake server URL + trust-ca into binPath
+# because Windows services don't expose a clean per-service env mechanism
+# through sc.exe.
+$BinPath = "`"$Target`" --trust-ca `"$CaTarget`" --server-url `"wss://cobweb.lan:8088/agent/ws`""
 if (-not $svc) {
     Write-Host "creating service cobwebAgent..."
-    & sc.exe create cobwebAgent binPath= "`"$Target`"" start= auto DisplayName= "cobweb agent" | Out-Null
+    & sc.exe create cobwebAgent binPath= $BinPath start= auto DisplayName= "cobweb agent" | Out-Null
     & sc.exe description cobwebAgent "Node-side daemon for cobweb mesh management." | Out-Null
     # Restart on failure (3 attempts, 5s apart).
     & sc.exe failure cobwebAgent reset= 86400 actions= restart/5000/restart/5000/restart/5000 | Out-Null
+} else {
+    Write-Host "updating service binPath..."
+    & sc.exe config cobwebAgent binPath= $BinPath | Out-Null
 }
 
 $env:COBWEB_AGENT_CONFIG = $ConfigFile

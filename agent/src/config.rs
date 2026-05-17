@@ -192,6 +192,13 @@ pub struct Cli {
     /// Also tee tracing output to stderr.
     #[arg(long, env = "COBWEB_AGENT_LOG_ALSO_STDERR")]
     pub log_also_stderr: bool,
+
+    /// Path to a PEM file containing the private CA the agent should trust
+    /// for the server's TLS handshake. Without this rustls only trusts
+    /// the embedded public web roots — a private `etmesh-ca`-signed cert
+    /// fails with `UnknownIssuer` until this points at the CA's `.crt`.
+    #[arg(long, env = "COBWEB_AGENT_TRUST_CA")]
+    pub trust_ca: Option<PathBuf>,
 }
 
 impl Cli {
@@ -238,6 +245,9 @@ impl Cli {
         }
         if self.log_also_stderr {
             cfg.log_also_stderr = true;
+        }
+        if let Some(v) = self.trust_ca {
+            cfg.trust_ca_path = Some(v);
         }
         Ok(cfg)
     }
@@ -295,10 +305,15 @@ mod tests {
             cert_fingerprint: None,
             log_dir: None,
             log_also_stderr: false,
+            trust_ca: Some(PathBuf::from("/etc/cobweb-agent/etmesh-ca.crt")),
         };
         let cfg = cli.into_config().unwrap();
         assert_eq!(cfg.server_url, "wss://override/agent/ws");
         assert_eq!(cfg.log_level, "debug");
+        assert_eq!(
+            cfg.trust_ca_path.as_deref(),
+            Some(std::path::Path::new("/etc/cobweb-agent/etmesh-ca.crt"))
+        );
     }
 
     #[test]

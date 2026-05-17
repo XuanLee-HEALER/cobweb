@@ -35,12 +35,16 @@
     <key>GroupName</key>
     <string>wheel</string>
 
-    <!-- Inherit the system env; the daemon reads its own config from
-         /etc/cobweb-agent/config.toml. -->
+    <!-- Daemon defaults: aim at the EasyTier hub and trust the private CA.
+         For local overrides drop a config.toml at /etc/cobweb-agent/. -->
     <key>EnvironmentVariables</key>
     <dict>
         <key>RUST_LOG</key>
         <string>info</string>
+        <key>COBWEB_AGENT_SERVER_URL</key>
+        <string>wss://cobweb.lan:8088/agent/ws</string>
+        <key>COBWEB_AGENT_TRUST_CA</key>
+        <string>/etc/cobweb-agent/etmesh-ca.crt</string>
     </dict>
 
     <!-- macOS launchd has no native logrotate; if logs grow large, rotate
