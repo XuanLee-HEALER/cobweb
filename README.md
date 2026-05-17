@@ -1,5 +1,13 @@
 # cobweb
 
+> **Personal-use EasyTier management tool.** Designed and maintained for one
+> operator's mesh. The code is open so anyone with the same itch can read it
+> and learn from it, but it bakes in assumptions about my own topology
+> (mesh hub on aliyun ECS, `etmesh-ca` from a k8s `ClusterIssuer`, mesh hostnames
+> like `cobweb.lan`, etc.). **If you want to actually run cobweb against your
+> own mesh, fork and maintain it as a separate project** — substituting hub
+> address, CA chain, DNS zone, and host fingerprints to match your setup.
+
 EasyTier private mesh management dashboard. Dense, single-user, three packages
 in one repo:
 
@@ -215,6 +223,26 @@ Logs roll daily into `<log_dir>/cobweb-agent.YYYY-MM-DD`; files older than `log_
 - [`docs/agent-design.md`](docs/agent-design.md) — Agent protocol + capabilities (architecture / why)
 - [`docs/agent-impl-plan.md`](docs/agent-impl-plan.md) — Implementation rollout, TLS / replay / file-resume specs
 
+## Contributing
+
+The repo is public because reading other people's mesh tooling is useful,
+not because it's a product. With that framing:
+
+- **Bug reports / fixes welcome** — anything that breaks under normal use
+  on the documented topology. Open an issue with reproduction steps or a
+  PR with the smallest change that closes the gap.
+- **Foundational hygiene welcome** — clearer error messages, dependency
+  bumps, doc fixes, cross-OS portability tweaks, security hardening of
+  what's already there.
+- **Feature expansion: please don't.** I keep cobweb deliberately small
+  so my own mesh stays observable in one head. PRs that add new
+  capabilities (extra dashboards, more orchestration verbs, new agent
+  features, integrations with third-party services) will most likely be
+  declined. Fork it and grow it in your own copy — that's why MIT.
+
+If you're unsure which bucket your idea falls into, file an issue first
+and ask. Saves a round trip.
+
 ## License
 
-Private. Not for redistribution.
+[MIT](LICENSE). Use it, fork it, ship it — keep the copyright notice.
