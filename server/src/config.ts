@@ -49,22 +49,46 @@ export const DNS_NRPT_TAG = "etmesh-managed";
 
 // ── WSS for agent + dashboard (impl-plan §3.4) ─────────────────────────
 //
-// Both endpoints share the same Bun.serve, so they share TLS material. The
-// agent verifies the peer cert pin (see impl-plan §3.2); the dashboard uses
-// the normal CA chain check.
+// TLS is mandatory. Both the dashboard https vhost and the /agent/ws upgrade
+// share the same Bun.serve listener, so they share one cert + key. The agent
+// additionally verifies the peer cert pin (see impl-plan §3.2); the dashboard
+// uses the normal CA chain check against `etmesh-ca` (or whatever public CA
+// signs the leaf once cobweb runs on the open internet).
+//
+// Plaintext was tolerated in v0 to flatten the dev onramp; with cobweb moving
+// toward public-internet etmesh hub use the loose option is now a footgun.
+// Production refuses to start without a cert; an explicit env escape hatch
+// (`COBWEB_ALLOW_PLAINTEXT=1`) keeps `just dev` working without forcing every
+// contributor to mint a self-signed cert before they can `bun run`.
 
 export const SERVER_CERT_PATH = process.env.SERVER_CERT_PATH ?? "";
 export const SERVER_KEY_PATH = process.env.SERVER_KEY_PATH ?? "";
+export const ALLOW_PLAINTEXT = process.env.COBWEB_ALLOW_PLAINTEXT === "1";
 
-/** Returns the Bun TLS option object, or `undefined` when running plaintext.
- *  Plaintext is fine in dev — production should always set both env vars. */
+/** Returns the Bun TLS option object, or `undefined` only when the caller
+ *  has explicitly opted into plaintext via `COBWEB_ALLOW_PLAINTEXT=1`.
+ *  Otherwise a missing / unreadable cert is a hard error — the process
+ *  exits non-zero so systemd / CI / docker-compose surface the failure
+ *  instead of silently shipping an unencrypted hub. */
 export function loadTlsCertificate(): { cert: string; key: string } | undefined {
-  if (!SERVER_CERT_PATH || !SERVER_KEY_PATH) return undefined;
-  if (!existsSync(SERVER_CERT_PATH) || !existsSync(SERVER_KEY_PATH)) {
-    console.warn(
-      `TLS env set but file missing — falling back to plaintext (cert=${SERVER_CERT_PATH}, key=${SERVER_KEY_PATH})`,
+  if (!SERVER_CERT_PATH || !SERVER_KEY_PATH) {
+    if (ALLOW_PLAINTEXT) {
+      console.warn("COBWEB_ALLOW_PLAINTEXT=1 — running without TLS. Never use this in production.");
+      return undefined;
+    }
+    console.error(
+      "cobweb: SERVER_CERT_PATH and SERVER_KEY_PATH must both be set (TLS is mandatory).",
     );
-    return undefined;
+    console.error(
+      "       Set COBWEB_ALLOW_PLAINTEXT=1 only for local development against a non-public hub.",
+    );
+    process.exit(1);
+  }
+  if (!existsSync(SERVER_CERT_PATH) || !existsSync(SERVER_KEY_PATH)) {
+    console.error(
+      `cobweb: TLS env set but file missing — cert=${SERVER_CERT_PATH} key=${SERVER_KEY_PATH}`,
+    );
+    process.exit(1);
   }
   return {
     cert: readFileSync(SERVER_CERT_PATH, "utf8"),

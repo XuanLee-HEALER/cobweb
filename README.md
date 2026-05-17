@@ -118,9 +118,10 @@ the mesh's authoritative ipv4, typically `10.177.0.1`). Concretely:
 Running on a non-hub node would defeat both the mesh-internal-only listener
 binding and the cert SAN — don't.
 
-### TLS opt-in (the server picks the protocol)
+### TLS is mandatory
 
-The server inspects two env vars on boot:
+The server refuses to start without a cert + key. The two env vars are
+required:
 
 ```sh
 SERVER_CERT_PATH=/etc/cobweb/tls/server.crt
@@ -128,14 +129,20 @@ SERVER_KEY_PATH=/etc/cobweb/tls/server.key
 ```
 
 - **Both files present + readable** → `Bun.serve` brings up TLS; the
-  endpoint becomes `https://…/` + `wss://…/agent/ws`.
-- **Either path missing or empty** → falls back to plaintext HTTP/WS,
-  with a console warning. Useful for `just dev` and CI smoke tests.
+  endpoint becomes `https://…/` + `wss://…/agent/ws`. ← the only
+  supported production mode.
+- **Missing / unreadable** → process exits non-zero on boot. systemd or
+  CI sees the failure instead of silently shipping plaintext.
+- **`COBWEB_ALLOW_PLAINTEXT=1`** → explicit escape hatch for local dev
+  (`just dev` sets it automatically). The startup log warns loudly.
+  Never use this against a public hub.
 
 Issuing / rotating the cert is done off-band against the mesh's private CA
 (`etmesh-ca`, a `ClusterIssuer` in archmbp's k8s cert-manager). Drop the
 new cert into `SERVER_CERT_PATH` and `sudo systemctl restart cobweb-server`
-— no unit change required.
+— no unit change required. The deployment systemd unit already sets the
+two `SERVER_*_PATH` env vars, so a missing cert file is the only failure
+mode.
 
 ## CA trust on the agent side
 

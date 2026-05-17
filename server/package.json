@@ -8,7 +8,7 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "dev": "bun --watch src/index.ts",
+    "dev": "COBWEB_ALLOW_PLAINTEXT=1 bun --watch src/index.ts",
     "start": "bun src/index.ts",
     "check": "tsc --noEmit"
   },
