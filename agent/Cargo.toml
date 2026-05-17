@@ -69,14 +69,20 @@ windows-sys = { version = "0.59", features = [
 tokio = { version = "1.40", features = ["full", "test-util", "macros"] }
 tempfile = "3"
 
-# Release profile tuned for CI build time. Skip LTO + raise codegen units so
-# more codegen happens in parallel — the agent is IO-bound (mostly tokio +
-# rustls), the residual perf win from full LTO doesn't justify another minute
-# per platform per build.
+# Release profile tuned for CI build time. The agent is IO-bound (tokio +
+# rustls + a few file/exec syscalls), so we sacrifice the last 10-15% of
+# codegen quality for ~30-40% off compile wall-clock:
+#
+#   codegen-units = 256  — maximises per-crate parallelism
+#   lto = false          — skip the link-time optimiser (saves >1 min on Win)
+#   opt-level = 2        — keep loop unrolling & inlining but drop the
+#                          O3-only passes (vectorisation, expensive inlining)
+#                          that dominate Windows codegen time on tokio/ring
+#   strip = "symbols"    — release artefact stays small
 [profile.release]
 codegen-units = 256
 lto = false
-opt-level = 3
+opt-level = 2
 strip = "symbols"
 
 # ── lints ──────────────────────────────────────────────────────────────

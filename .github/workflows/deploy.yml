@@ -37,7 +37,7 @@ jobs:
       agent: ${{ steps.f.outputs.agent }}
     steps:
       - uses: actions/checkout@v5
-      - uses: dorny/paths-filter@v3
+      - uses: dorny/paths-filter@v4
         id: f
         with:
           filters: |
@@ -69,7 +69,7 @@ jobs:
           bun-version: latest
       - run: bun install --frozen-lockfile
       - run: bun run --cwd dashboard build
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v6
         with:
           name: dashboard-dist
           path: dashboard/dist/
@@ -94,7 +94,7 @@ jobs:
             --target=bun \
             --outfile=server/dist/server.js
           ls -la server/dist/
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v6
         with:
           name: server-bundle
           path: server/dist/server.js
@@ -128,7 +128,7 @@ jobs:
       - name: build
         working-directory: agent
         run: cargo build --release --bin cobweb-agent
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v6
         with:
           name: agent-${{ matrix.artifact }}
           path: agent/target/release/${{ matrix.bin }}
@@ -150,7 +150,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: download all artifacts
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v6
         with:
           path: artifacts/
         # If everything was skipped (no artifacts to download), this just
