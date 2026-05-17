@@ -1,0 +1,165 @@
+# Build dashboard + server bundle + agent binaries, then rsync the artifacts
+# to the cobweb host and bounce the systemd unit.
+#
+# Layout on the host (must match server/src/config.ts path derivation —
+# `import.meta.dir` from `/opt/cobweb/server/dist/server.js` resolves to
+# `/opt/cobweb/server/dist`, so REPO_ROOT = `/opt/cobweb`):
+#
+#   /opt/cobweb/
+#     server/dist/server.js          (bun bundle, single file)
+#     dashboard/dist/                (vite build output, static)
+#     agents/{linux-x86_64,windows-x86_64,macos-aarch64}/cobweb-agent[.exe]
+#     nodes.json, etmesh-ca.crt, etmesh-id_ed25519(.pub)   ← runtime data, NOT touched by CI
+
+name: deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+concurrency:
+  group: deploy-main
+  cancel-in-progress: false
+
+jobs:
+  # ── dashboard (vite build → static dist/) ────────────────────────────
+  build-dashboard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install --frozen-lockfile
+      - run: bun run --cwd dashboard build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dashboard-dist
+          path: dashboard/dist/
+          if-no-files-found: error
+          retention-days: 7
+
+  # ── server (bun bundle, no runtime) ──────────────────────────────────
+  build-server:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install --frozen-lockfile
+      - name: bundle
+        run: |
+          mkdir -p server/dist
+          bun build server/src/index.ts \
+            --target=bun \
+            --outfile=server/dist/server.js
+          ls -la server/dist/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: server-bundle
+          path: server/dist/server.js
+          if-no-files-found: error
+          retention-days: 7
+
+  # ── agent (rust, three OS targets in parallel) ───────────────────────
+  build-agent:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            artifact: linux-x86_64
+            bin: cobweb-agent
+          - os: windows-latest
+            artifact: windows-x86_64
+            bin: cobweb-agent.exe
+          - os: macos-latest
+            artifact: macos-aarch64
+            bin: cobweb-agent
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: agent
+      - name: build
+        working-directory: agent
+        run: cargo build --release --bin cobweb-agent
+      - uses: actions/upload-artifact@v4
+        with:
+          name: agent-${{ matrix.artifact }}
+          path: agent/target/release/${{ matrix.bin }}
+          if-no-files-found: error
+          retention-days: 7
+
+  # ── deploy (rsync to ECS + restart unit) ─────────────────────────────
+  deploy:
+    needs: [build-dashboard, build-server, build-agent]
+    runs-on: ubuntu-latest
+    steps:
+      - name: download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+
+      - name: lay out release tree
+        run: |
+          set -e
+          mkdir -p release/server/dist release/dashboard release/agents/{linux-x86_64,windows-x86_64,macos-aarch64}
+
+          mv artifacts/dashboard-dist  release/dashboard/dist
+          mv artifacts/server-bundle/server.js  release/server/dist/server.js
+
+          mv artifacts/agent-linux-x86_64/cobweb-agent          release/agents/linux-x86_64/cobweb-agent
+          mv artifacts/agent-windows-x86_64/cobweb-agent.exe    release/agents/windows-x86_64/cobweb-agent.exe
+          mv artifacts/agent-macos-aarch64/cobweb-agent         release/agents/macos-aarch64/cobweb-agent
+
+          chmod +x release/agents/linux-x86_64/cobweb-agent release/agents/macos-aarch64/cobweb-agent
+
+          echo "--- release tree ---"
+          find release -maxdepth 3 -type f -printf '%P\n'
+
+      - name: install ssh key
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          echo "${{ secrets.ALIYUN_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          # StrictHostKeyChecking off in CI (deploy_key + IP authenticate the
+          # peer; the host fingerprint would have to be pinned separately).
+          cat > ~/.ssh/config <<EOF
+          Host cobweb
+            HostName ${{ secrets.ALIYUN_HOST }}
+            User ${{ secrets.ALIYUN_USER }}
+            Port ${{ secrets.ALIYUN_SSH_PORT }}
+            IdentityFile ~/.ssh/deploy_key
+            IdentitiesOnly yes
+            StrictHostKeyChecking no
+            UserKnownHostsFile /dev/null
+          EOF
+
+      - name: rsync release tree
+        run: |
+          # --delete inside each subtree so removed files vanish, but the
+          # top-level /opt/cobweb is untouched — runtime data (nodes.json /
+          # etmesh-*) keeps living there.
+          rsync -avz --delete release/server/        cobweb:/opt/cobweb/server/
+          rsync -avz --delete release/dashboard/     cobweb:/opt/cobweb/dashboard/
+          rsync -avz --delete release/agents/        cobweb:/opt/cobweb/agents/
+
+      - name: enable + restart cobweb-server
+        run: |
+          # Enable on first deploy (idempotent), then bounce. The sudoers
+          # rule on the host permits only this exact unit.
+          ssh cobweb 'sudo -n systemctl restart cobweb-server.service'
+          sleep 2
+          ssh cobweb 'sudo -n systemctl is-active cobweb-server.service'
+
+      - name: smoke test
+        run: |
+          # /api/agents is a no-side-effect read that exercises the new bundle.
+          # Hit it from the host (mesh IP isn't reachable from CI).
+          ssh cobweb 'curl -fsS http://10.177.0.1:8088/api/agents | head -c 200 && echo'

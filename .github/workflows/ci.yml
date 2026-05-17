@@ -1,0 +1,48 @@
+# Read-only checks for every PR + every push that isn't main. Runs the same
+# `just check` the pre-push hook does, plus the Rust side (`just agent-check`).
+# main itself is covered by deploy.yml, which has the same compile steps —
+# CI here is purely for branches awaiting merge.
+
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches-ignore: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  js-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - uses: extractions/setup-just@v2
+      - run: bun install --frozen-lockfile
+      - run: just check
+        # `just check` = biome + dashboard tsc/svelte-check + server tsc.
+
+  agent-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: agent
+      - name: clippy
+        working-directory: agent
+        run: cargo clippy --all-targets -- -D warnings
+      - name: test
+        working-directory: agent
+        run: cargo test
+      - name: fmt
+        working-directory: agent
+        run: cargo fmt -- --check
