@@ -110,47 +110,62 @@ cobweb is **not a generic web service** — it has a hard placement requirement.
 ### Where the server runs
 
 The cobweb server **must run on the EasyTier hub node** (the node that hosts
-the mesh's authoritative ipv4, typically `10.177.0.1`). Concretely:
+the mesh's authoritative ipv4, typically `10.177.0.1`). Two processes share
+the responsibility:
 
-- `Bun.serve` binds `HOST` (default `10.177.0.1`), the mesh tun0 IP — public
-  eth0 sees nothing on port 8088.
-- The agent registry, `/api/agents` REST surface, and the `/agent/ws`
-  upgrade all live on that listener.
-- Mesh-internal DNS (CoreDNS) maps `cobweb.lan → 10.177.0.1` so the leaf
-  cert (CN=`cobweb.lan`, SAN includes IP `10.177.0.1`) validates for both
-  hostname and direct IP clients.
-- Dashboard users access via `https://cobweb.lan:8088` from any mesh-joined
-  machine (browser must trust `etmesh-ca`, distributed by the dashboard's
-  "CA 信任根分发" capability).
+- **nginx** binds `10.177.0.1:8088 ssl http2` on the mesh tun0 IP — public
+  eth0 sees nothing on 8088. It terminates TLS and reverse-proxies to bun
+  (WebSocket upgrade + SSE both pass through; see
+  `/etc/nginx/sites-available/cobweb.lan` on the hub).
+- **cobweb-server** (Bun, this repo's `server/` package) binds
+  `127.0.0.1:8089` plaintext loopback under systemd. It serves the
+  agent registry, `/api/agents` REST surface, `/agent/ws`, `/api/stream`
+  SSE, and the SPA static fallback.
+
+- Mesh-internal DNS (CoreDNS) maps `cobweb.lan → 10.177.0.1`. The leaf
+  cert has a **DNS-only SAN** (`DNS:cobweb.lan`, no IP SAN) — clients
+  must use the hostname; `https://10.177.0.1:8088` will fail cert
+  validation by design.
+- Dashboard users and the agent both access via
+  `https://cobweb.lan:8088` / `wss://cobweb.lan:8088/agent/ws` from any
+  mesh-joined machine (browser / agent must trust `etmesh-root-ca`).
 
 Running on a non-hub node would defeat both the mesh-internal-only listener
 binding and the cert SAN — don't.
 
-### TLS is mandatory
+### TLS at the edge
 
-The server refuses to start without a cert + key. The two env vars are
-required:
+nginx terminates TLS using a 7-day leaf cert from the mesh's private
+step-ca (separate infra, not in this repo). cert + key live at:
 
 ```sh
-SERVER_CERT_PATH=/etc/cobweb/tls/server.crt
-SERVER_KEY_PATH=/etc/cobweb/tls/server.key
+/etc/cobweb/tls/server.crt    # owner cobweb-deploy:cobweb-deploy, mode 0640
+/etc/cobweb/tls/server.key    # nginx's www-data is added to cobweb-deploy group
 ```
 
-- **Both files present + readable** → `Bun.serve` brings up TLS; the
-  endpoint becomes `https://…/` + `wss://…/agent/ws`. ← the only
-  supported production mode.
-- **Missing / unreadable** → process exits non-zero on boot. systemd or
-  CI sees the failure instead of silently shipping plaintext.
-- **`COBWEB_ALLOW_PLAINTEXT=1`** → explicit escape hatch for local dev
-  (`just dev` sets it automatically). The startup log warns loudly.
-  Never use this against a public hub.
+Two pieces keep them current:
 
-Issuing / rotating the cert is done off-band against the mesh's private CA
-(`etmesh-ca`, a `ClusterIssuer` in archmbp's k8s cert-manager). Drop the
-new cert into `SERVER_CERT_PATH` and `sudo systemctl restart cobweb-server`
-— no unit change required. The deployment systemd unit already sets the
-two `SERVER_*_PATH` env vars, so a missing cert file is the only failure
-mode.
+- **cert-manager** (in archmbp's k8s, separate from this repo) signs new
+  certs into a Secret as the old one approaches expiry — fully automatic,
+  no human action.
+- **`cobweb-tls-sync.timer`** on the hub (a systemd timer + shell script)
+  pulls that Secret via `ssh archmbp + kubectl get` every 5 min, atomically
+  replaces the two files when the sha256 changes, then runs
+  `systemctl reload nginx`. nginx's graceful reload swaps the in-memory
+  SSL_CTX without dropping established WebSocket / SSE connections —
+  cobweb-server itself never restarts.
+
+cobweb-server runs **plaintext** behind nginx; its systemd unit sets:
+
+```
+HOST=127.0.0.1
+PORT=8089
+COBWEB_ALLOW_PLAINTEXT=1
+```
+
+`COBWEB_ALLOW_PLAINTEXT=1` is also the local-dev escape hatch via
+`just dev` — the same flag covers both "behind a TLS-terminating proxy"
+and "developer laptop, no cert at all".
 
 ## CA trust on the agent side
 
