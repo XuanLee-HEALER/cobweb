@@ -205,7 +205,7 @@ Config knobs (CLI flag, env var, or `config.toml` key — all three are layered,
 
 | Flag                | Env                                   | Default                                                         |
 |---------------------|---------------------------------------|-----------------------------------------------------------------|
-| `--server-url`      | `COBWEB_AGENT_SERVER_URL`             | `wss://10.177.0.1:8088/agent/ws`                                |
+| `--server-url`      | `COBWEB_AGENT_SERVER_URL`             | `wss://cobweb.lan:8088/agent/ws`                                |
 | `--log-level`       | `COBWEB_AGENT_LOG_LEVEL`              | `info`                                                          |
 | `--cert-fingerprint`| `COBWEB_AGENT_CERT_FINGERPRINT`       | (empty — disables pin; production should pin)                   |
 | `--trust-ca`        | `COBWEB_AGENT_TRUST_CA`               | (empty — webpki-roots only; private CA needs explicit path)     |

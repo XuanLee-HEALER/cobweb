@@ -141,7 +141,7 @@ const fn default_log_max_age_days() -> u32 {
 }
 
 fn default_server_url() -> String {
-    "wss://10.177.0.1:8088/agent/ws".into()
+    "wss://cobweb.lan:8088/agent/ws".into()
 }
 
 impl Default for Config {

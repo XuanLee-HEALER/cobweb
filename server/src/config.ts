@@ -100,9 +100,11 @@ export function loadTlsCertificate(): { cert: string; key: string } | undefined 
 
 export const CA_CACHE_PATH = join(REPO_ROOT, "etmesh-ca.crt");
 export const CA_REMOTE_NODE = process.env.CA_REMOTE_NODE ?? "archmbp";
+// step-ca's root cert lives in an etmesh-pki ConfigMap, served raw PEM (no
+// base64 wrapper, unlike the legacy cert-manager Secret it replaced).
 export const CA_KUBECTL_CMD =
   process.env.CA_KUBECTL_CMD ??
-  "kubectl get secret -n cert-manager etmesh-root-ca -o jsonpath='{.data.ca\\.crt}' | base64 -d";
+  "kubectl -n etmesh-pki get cm step-ca-step-certificates-certs -o jsonpath='{.data.root_ca\\.crt}'";
 export const CA_REMOTE_FILENAME = "etmesh-root-ca.crt";
 export const CA_CN = "etmesh-root-ca";
 
